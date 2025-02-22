@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Shape Escape 2.0 - Refined Edition with Dash & Scoring</title>
+    <title>Shape Escape 2.0</title>
     <style>
         body {
             margin: 0;
@@ -23,86 +23,148 @@
             border: 2px solid #fff;
         }
 
-        #restartBtn {
-            display: none;
-            padding: 10px 20px;
+        /* Inline controls styling */
+        #controls {
+            margin: 10px auto;
+            padding: 10px 15px;
+            width: 800px;
+            /* Matches the game border width */
+            background: #222;
+            border: 1px solid #fff;
+            border-radius: 5px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 30px;
             font-size: 16px;
-            margin-top: 10px;
-            cursor: pointer;
+        }
+
+        #controls span {
+            white-space: nowrap;
         }
     </style>
 </head>
 
 <body>
     <h1>Shape Escape 2.0</h1>
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
-    <button id="restartBtn">Restart Game</button>
-    <p>
-        Move: ← / → &nbsp;&nbsp; Morph: [1]=Circle, [2]=Square, [3]=Triangle &nbsp;&nbsp; Dash: [Space]
-    </p>
+    <canvas id="gameCanvas"></canvas>
+    <!-- Inline controls section -->
+    <div id="controls">
+        <span><strong>Move:</strong> ← / →</span>
+        <span><strong>Morph:</strong> [1]=Circle, [2]=Square, [3]=Triangle</span>
+        <span><strong>Dash:</strong> [Space]</span>
+    </div>
     <script>
-        // Get canvas and context
+        // --- Canvas Setup with Device Pixel Ratio ---
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        const GAME_WIDTH = 800,
+            GAME_HEIGHT = 600;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = GAME_WIDTH * dpr;
+        canvas.height = GAME_HEIGHT * dpr;
+        canvas.style.width = GAME_WIDTH + "px";
+        canvas.style.height = GAME_HEIGHT + "px";
+        ctx.scale(dpr, dpr);
 
-        // Game state variables
+        // --- Game Constants (using seconds) ---
+        const BASE_SPAWN_INTERVAL = 1.0;
+        const COMBO_RESET_TIME = 2.0;
+        const SHIELD_DURATION = 5.0;
+        const DASH_DURATION = 0.25;
+        const MOVE_SPEED = 400;
+        const DASH_SPEED = 1200;
+        const MORPH_SCALE_DECAY = 3;
+
+        // --- Game State Variables ---
         let gameOver = false;
         let score = 0;
-        let highScore = 0; // Remember highest score in current session
-        let gameTime = 0; // frame count
+        let highScore = 0;
         let spawnTimer = 0;
-        const baseSpawnInterval = 90; // base frames between obstacle spawns
-
-        // Combo system
         let comboCount = 0;
         let comboTimer = 0;
-        const comboResetTime = 120; // frames until combo resets
-
-        // Shield power-up variables
         let shieldActive = false;
         let shieldTimer = 0;
-        const shieldDuration = 300; // frames shield lasts
+        let gameStarted = false; // Flag for start menu
+        let paused = false;      // Global pause flag
 
-        // Player object with morph animation and dash properties
+        // --- Player Object ---
         const player = {
-            x: canvas.width / 2,
-            y: canvas.height - 70,
+            x: GAME_WIDTH / 2,
+            y: GAME_HEIGHT - 70,
             size: 50,
-            shape: 'circle',    // 'circle', 'square', 'triangle'
-            speed: 5,
-            morphScale: 1,      // scale for morph animation (pulsing effect)
-            // Dash properties:
+            shape: 'circle', // 'circle', 'square', 'triangle'
+            morphScale: 1,
             isDashing: false,
             dashTime: 0,
-            dashDuration: 15,   // frames the dash lasts
-            dashSpeed: 15,      // extra speed per frame during dash
-            dashDirection: 0,   // -1 for left, +1 for right
-            lastDirection: 1    // remembers last horizontal direction; default right
+            dashDirection: 0,
+            lastDirection: 1
         };
 
-        // Arrays for obstacles, particles, and stars (background)
-        const obstacles = []; // obstacles have: x, y, size, type, shape
-        // type: "normal" or "powerup" (shield)
+        // --- Arrays for Obstacles, Particles, and Stars ---
+        const obstacles = [];
         const particles = [];
         const stars = [];
-
-        // Create a starfield background (50 stars)
         const starCount = 50;
         for (let i = 0; i < starCount; i++) {
             stars.push({
-                x: Math.random() * canvas.width,
-                y: Math.random() * canvas.height,
+                x: Math.random() * GAME_WIDTH,
+                y: Math.random() * GAME_HEIGHT,
                 size: Math.random() * 2 + 1,
                 speed: Math.random() * 0.5 + 0.2,
             });
         }
 
-        // Key state for movement
-        const keys = { left: false, right: false };
+        // --- Difficulty Functions ---
+        function getObstacleSpeed(score) {
+            if (score < 5000) {
+                return 150 + (score / 5000) * 200; // 150 to 350
+            } else if (score < 15000) {
+                return 350 + ((score - 5000) / 10000) * 150; // 350 to 500
+            } else {
+                return 500 + ((score - 15000) / 10000) * 100; // e.g., 500 to 600
+            }
+        }
 
-        // Input event listeners
+        function getSpawnInterval(score) {
+            if (score < 5000) {
+                return 1.0 - (score / 5000) * 0.1; // 1.0s to 0.9s
+            } else if (score < 15000) {
+                return 0.9 - ((score - 5000) / 10000) * 0.2; // 0.9s to 0.7s
+            } else {
+                return Math.max(0.5, 0.7 - ((score - 15000) / 10000) * 0.2); // down to 0.5s minimum
+            }
+        }
+
+        // --- Input Handling ---
+        const keys = { left: false, right: false };
         document.addEventListener('keydown', (e) => {
-            if (!gameOver) {
+            // Toggle pause on Escape key.
+            if (e.code === 'Escape') {
+                paused = !paused;
+                if (!paused) {
+                    // When unpausing, reset the lastFrameTime to avoid a huge dt jump.
+                    lastFrameTime = performance.now();
+                    requestAnimationFrame(gameLoop);
+                }
+                return;
+            }
+            // If the game is paused, Space should also unpause.
+            if (paused && e.code === 'Space') {
+                paused = false;
+                lastFrameTime = performance.now();
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+            // Start menu: begin game on Space press.
+            if (!gameStarted && e.code === 'Space') {
+                gameStarted = true;
+                lastFrameTime = performance.now();
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+            // When not in game over and not paused, process input normally.
+            if (!gameOver && !paused) {
                 if (e.key === 'ArrowLeft') {
                     keys.left = true;
                     player.lastDirection = -1;
@@ -123,7 +185,7 @@
                     player.shape = 'triangle';
                     player.morphScale = 1.5;
                 }
-                // Dash on Space bar press (only if not game over)
+                // Dash mechanic.
                 if (e.code === 'Space') {
                     if (!player.isDashing) {
                         if (keys.left) {
@@ -134,15 +196,14 @@
                             player.dashDirection = player.lastDirection;
                         }
                         player.isDashing = true;
-                        player.dashTime = player.dashDuration;
+                        player.dashTime = DASH_DURATION;
                         createParticles(player.x, player.y, '#ffffff', 10);
                     }
-                    // Prevent default scrolling behavior.
                     e.preventDefault();
                 }
             } else {
-                // When game over, allow restart with space bar
-                if (e.code === 'Space') {
+                // If the game is over, pressing Space will restart.
+                if (gameOver && e.code === 'Space') {
                     restartGame();
                 }
             }
@@ -152,13 +213,10 @@
             if (e.key === 'ArrowRight') keys.right = false;
         });
 
-        // Restart button functionality (for clicking restart)
-        const restartBtn = document.getElementById('restartBtn');
-        restartBtn.addEventListener('click', restartGame);
+        // --- Restart Game Function ---
         function restartGame() {
             gameOver = false;
             score = 0;
-            gameTime = 0;
             spawnTimer = 0;
             comboCount = 0;
             comboTimer = 0;
@@ -166,26 +224,26 @@
             shieldTimer = 0;
             obstacles.length = 0;
             particles.length = 0;
-            player.x = canvas.width / 2;
+            player.x = GAME_WIDTH / 2;
             player.shape = 'circle';
             player.morphScale = 1;
             player.isDashing = false;
-            restartBtn.style.display = 'none';
-            gameLoop();
+            lastFrameTime = performance.now();
+            requestAnimationFrame(gameLoop);
         }
 
-        // Utility: simple collision detection (circle-based)
+        // --- Utility: Collision Detection ---
         function isColliding(a, b) {
             const dx = a.x - b.x;
             const dy = a.y - b.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
-            return distance < (a.size / 2 + b.size / 2);
+            return distance <= (a.size / 2 + b.size / 2 + 3);
         }
 
-        // Spawn obstacles: 90% normal, 10% powerup.
+        // --- Spawn Obstacles ---
         function spawnObstacle() {
             const size = 40;
-            const x = Math.random() * (canvas.width - size) + size / 2;
+            const x = Math.random() * (GAME_WIDTH - size) + size / 2;
             const y = -size / 2;
             if (Math.random() < 0.1) {
                 obstacles.push({ x, y, size: 30, type: 'powerup', shape: 'star' });
@@ -196,7 +254,7 @@
             }
         }
 
-        // Particle effect (for collisions, morphing, and dash)
+        // --- Particle Effects ---
         function createParticles(x, y, color, amount = 15) {
             for (let i = 0; i < amount; i++) {
                 particles.push({
@@ -211,72 +269,66 @@
             }
         }
 
-        // Update starfield
+        // --- Update Stars ---
         function updateStars() {
             stars.forEach(star => {
                 star.y += star.speed;
-                if (star.y > canvas.height) {
+                if (star.y > GAME_HEIGHT) {
                     star.y = 0;
-                    star.x = Math.random() * canvas.width;
+                    star.x = Math.random() * GAME_WIDTH;
                 }
             });
         }
 
-        // Update particles
-        function updateParticles() {
+        // --- Update Particles ---
+        function updateParticles(dt) {
             particles.forEach(p => {
                 p.x += p.vx;
                 p.y += p.vy;
-                p.alpha -= 0.02;
+                p.alpha -= 0.02 * dt * 60;
             });
             for (let i = particles.length - 1; i >= 0; i--) {
                 if (particles[i].alpha <= 0) particles.splice(i, 1);
             }
         }
 
-        // Update game state
-        function update() {
-            if (gameOver) return;
-            gameTime++;
+        // --- Update Game State ---
+        function update(dt) {
+            if (!gameStarted || gameOver || paused) return;
 
-            // Handle dash movement
+            // Handle dash movement.
             if (player.isDashing) {
-                player.x += player.dashSpeed * player.dashDirection;
-                player.dashTime--;
+                player.x += DASH_SPEED * player.dashDirection * dt;
+                player.dashTime -= dt;
                 if (player.dashTime <= 0) {
                     player.isDashing = false;
                 }
             } else {
-                if (keys.left) {
-                    player.x -= player.speed;
-                }
-                if (keys.right) {
-                    player.x += player.speed;
-                }
+                if (keys.left) player.x -= MOVE_SPEED * dt;
+                if (keys.right) player.x += MOVE_SPEED * dt;
             }
-            // Clamp player position
+            // Clamp player position.
             if (player.x - player.size / 2 < 0) player.x = player.size / 2;
-            if (player.x + player.size / 2 > canvas.width) player.x = canvas.width - player.size / 2;
+            if (player.x + player.size / 2 > GAME_WIDTH) player.x = GAME_WIDTH - player.size / 2;
 
-            // Reduce morph scale back to 1
+            // Morph scale decay.
             if (player.morphScale > 1) {
-                player.morphScale -= 0.05;
+                player.morphScale -= MORPH_SCALE_DECAY * dt;
                 if (player.morphScale < 1) player.morphScale = 1;
             }
 
-            // Adjust obstacle speed (capped for playability)
-            const obstacleSpeed = 2 + Math.min(score, 500) * 0.005;  // max around 4.5
+            const obstacleSpeed = getObstacleSpeed(score);
+            let currentSpawnInterval = getSpawnInterval(score);
+
             obstacles.forEach(obs => {
-                obs.y += obstacleSpeed;
+                obs.y += obstacleSpeed * dt;
             });
-            // Remove obstacles off-screen
             for (let i = obstacles.length - 1; i >= 0; i--) {
-                if (obstacles[i].y - obstacles[i].size / 2 > canvas.height) {
+                if (obstacles[i].y - obstacles[i].size / 2 > GAME_HEIGHT) {
                     obstacles.splice(i, 1);
                 }
             }
 
-            // Collision detection
             obstacles.forEach((obs) => {
                 if (isColliding(player, obs)) {
                     if (obs.type === 'normal') {
@@ -285,64 +337,55 @@
                             comboCount++;
                             comboTimer = 0;
                             createParticles(obs.x, obs.y, '#00ff00', 10);
-                            obs.y = canvas.height + 100;
+                            obs.y = GAME_HEIGHT + 100;
                         } else {
                             if (shieldActive) {
                                 shieldActive = false;
                                 shieldTimer = 0;
                                 createParticles(obs.x, obs.y, '#ffff00', 10);
-                                obs.y = canvas.height + 100;
+                                obs.y = GAME_HEIGHT + 100;
                             } else {
                                 gameOver = true;
-                                // Update high score if necessary
-                                if (score > highScore) {
-                                    highScore = score;
-                                }
+                                if (score > highScore) highScore = score;
                             }
                         }
                     } else if (obs.type === 'powerup') {
                         shieldActive = true;
-                        shieldTimer = shieldDuration;
+                        shieldTimer = SHIELD_DURATION;
                         createParticles(obs.x, obs.y, '#00ffff', 15);
-                        obs.y = canvas.height + 100;
+                        obs.y = GAME_HEIGHT + 100;
                     }
                 }
             });
 
-            // Update combo timer
-            comboTimer++;
-            if (comboTimer > comboResetTime) {
+            comboTimer += dt;
+            if (comboTimer > COMBO_RESET_TIME) {
                 comboCount = 0;
                 comboTimer = 0;
             }
 
-            // Update shield timer
             if (shieldActive) {
-                shieldTimer--;
-                if (shieldTimer <= 0) {
-                    shieldActive = false;
-                }
+                shieldTimer -= dt;
+                if (shieldTimer <= 0) shieldActive = false;
             }
 
-            updateStars();
-            updateParticles();
-
-            // Adjust spawn interval gradually
-            const currentSpawnInterval = Math.max(80, baseSpawnInterval - Math.floor(score / 400));
-            spawnTimer++;
+            spawnTimer += dt;
             if (spawnTimer > currentSpawnInterval) {
                 spawnObstacle();
                 spawnTimer = 0;
             }
+
+            updateStars();
+            updateParticles(dt);
         }
 
-        // Draw starfield with gradient background
+        // --- Drawing Functions ---
         function drawStars() {
-            const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            const grad = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
             grad.addColorStop(0, '#111');
             grad.addColorStop(1, '#222');
             ctx.fillStyle = grad;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
             stars.forEach(star => {
                 ctx.fillStyle = '#fff';
                 ctx.globalAlpha = 0.8;
@@ -353,7 +396,22 @@
             ctx.globalAlpha = 1;
         }
 
-        // Draw player with shadow and shield indicator
+        function drawStartMenu() {
+            const grad = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
+            grad.addColorStop(0, '#111');
+            grad.addColorStop(1, '#222');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            ctx.fillStyle = '#fff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = '40px sans-serif';
+            ctx.fillText('Shape Escape 2.0', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 60);
+            ctx.font = '20px sans-serif';
+            ctx.fillText('Press Space to Start', GAME_WIDTH / 2, GAME_HEIGHT / 2);
+        }
+
+        // Enhanced drawPlayer with Adaptive Shield.
         function drawPlayer() {
             ctx.save();
             ctx.translate(player.x, player.y);
@@ -361,13 +419,19 @@
             ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
             ctx.shadowBlur = 10;
             ctx.fillStyle = '#2E86C1';
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#fff';
             const half = player.size / 2;
             if (player.shape === 'circle') {
                 ctx.beginPath();
                 ctx.arc(0, 0, half, 0, Math.PI * 2);
                 ctx.fill();
+                ctx.stroke();
             } else if (player.shape === 'square') {
-                ctx.fillRect(-half, -half, player.size, player.size);
+                ctx.beginPath();
+                ctx.rect(-half, -half, player.size, player.size);
+                ctx.fill();
+                ctx.stroke();
             } else if (player.shape === 'triangle') {
                 ctx.beginPath();
                 ctx.moveTo(0, -half);
@@ -375,29 +439,73 @@
                 ctx.lineTo(half, half);
                 ctx.closePath();
                 ctx.fill();
-            }
-            ctx.restore();
-            if (shieldActive) {
-                ctx.strokeStyle = '#00ffff';
-                ctx.lineWidth = 4;
-                ctx.beginPath();
-                ctx.arc(player.x, player.y, half + 8, 0, Math.PI * 2);
                 ctx.stroke();
             }
+            if (shieldActive) {
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = '#00ffff';
+                const offset = 6;
+                if (player.shape === 'circle') {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, half + offset, 0, Math.PI * 2);
+                    ctx.stroke();
+                } else if (player.shape === 'square') {
+                    ctx.beginPath();
+                    ctx.rect(-half - offset, -half - offset, player.size + 2 * offset, player.size + 2 * offset);
+                    ctx.stroke();
+                } else if (player.shape === 'triangle') {
+                    const offsetVal = offset;
+                    const A = { x: 0, y: -half };
+                    const B = { x: -half, y: half };
+                    const C = { x: half, y: half };
+
+                    function computeOffsetVertex(P, Pprev, Pnext, offset) {
+                        let v1 = { x: Pprev.x - P.x, y: Pprev.y - P.y };
+                        let v2 = { x: Pnext.x - P.x, y: Pnext.y - P.y };
+                        let mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+                        let mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+                        v1.x /= mag1; v1.y /= mag1;
+                        v2.x /= mag2; v2.y /= mag2;
+                        let bisector = { x: v1.x + v2.x, y: v1.y + v2.y };
+                        let magBis = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
+                        if (magBis === 0) return { x: P.x, y: P.y };
+                        bisector.x /= magBis; bisector.y /= magBis;
+                        let dot = v1.x * v2.x + v1.y * v2.y;
+                        dot = Math.min(1, Math.max(-1, dot));
+                        let angle = Math.acos(dot);
+                        let factor = offset / Math.sin(angle / 2);
+                        return { x: P.x - factor * bisector.x, y: P.y - factor * bisector.y };
+                    }
+
+                    const A_off = computeOffsetVertex(A, B, C, offsetVal);
+                    const B_off = computeOffsetVertex(B, C, A, offsetVal);
+                    const C_off = computeOffsetVertex(C, A, B, offsetVal);
+
+                    ctx.beginPath();
+                    ctx.moveTo(A_off.x, A_off.y);
+                    ctx.lineTo(B_off.x, B_off.y);
+                    ctx.lineTo(C_off.x, C_off.y);
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
         }
 
-        // Draw obstacles with soft shadows
         function drawObstacle(obs) {
             ctx.lineWidth = 3;
             ctx.shadowColor = "rgba(0, 0, 0, 0.3)";
             ctx.shadowBlur = 8;
             if (obs.type === 'normal') {
+                ctx.fillStyle = '#222';
                 ctx.strokeStyle = '#fff';
                 if (obs.shape === 'circle') {
                     ctx.beginPath();
                     ctx.arc(obs.x, obs.y, obs.size / 2, 0, Math.PI * 2);
+                    ctx.fill();
                     ctx.stroke();
                 } else if (obs.shape === 'square') {
+                    ctx.fillRect(obs.x - obs.size / 2, obs.y - obs.size / 2, obs.size, obs.size);
                     ctx.strokeRect(obs.x - obs.size / 2, obs.y - obs.size / 2, obs.size, obs.size);
                 } else if (obs.shape === 'triangle') {
                     ctx.beginPath();
@@ -405,15 +513,19 @@
                     ctx.lineTo(obs.x - obs.size / 2, obs.y + obs.size / 2);
                     ctx.lineTo(obs.x + obs.size / 2, obs.y + obs.size / 2);
                     ctx.closePath();
+                    ctx.fill();
                     ctx.stroke();
                 }
             } else if (obs.type === 'powerup') {
                 ctx.shadowBlur = 0;
                 ctx.fillStyle = '#ffd700';
                 ctx.beginPath();
-                let spikes = 5, outerRadius = obs.size / 2, innerRadius = outerRadius / 2;
+                let spikes = 5,
+                    outerRadius = obs.size / 2,
+                    innerRadius = outerRadius / 2;
                 let rot = Math.PI / 2 * 3;
-                let cx = obs.x, cy = obs.y;
+                let cx = obs.x,
+                    cy = obs.y;
                 let step = Math.PI / spikes;
                 ctx.moveTo(cx, cy - outerRadius);
                 for (let i = 0; i < spikes; i++) {
@@ -432,7 +544,6 @@
             ctx.shadowBlur = 0;
         }
 
-        // Draw particles
         function drawParticles() {
             particles.forEach(p => {
                 ctx.globalAlpha = p.alpha;
@@ -444,59 +555,78 @@
             ctx.globalAlpha = 1;
         }
 
-        // Draw UI: score, high score, combo multiplier, shield timer
         function drawUI() {
             ctx.shadowColor = "rgba(0,0,0,0.5)";
             ctx.shadowBlur = 4;
             ctx.fillStyle = '#fff';
             ctx.font = '20px sans-serif';
-            ctx.fillText('Score: ' + score, 10, 30);
-            ctx.fillText('High Score: ' + highScore, 10, 55);
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillText('Score: ' + score, 10, 10);
+            ctx.fillText('High Score: ' + highScore, 10, 35);
             ctx.shadowBlur = 0;
             if (comboCount > 1) {
-                ctx.fillText('Combo x' + (comboCount + 1), 10, 80);
+                ctx.fillText('Combo x' + (comboCount + 1), 10, 60);
             }
             if (shieldActive) {
-                ctx.fillText('Shield: ' + Math.ceil(shieldTimer / 60) + 's', canvas.width - 140, 30);
+                ctx.fillText('Shield: ' + Math.ceil(shieldTimer) + 's', GAME_WIDTH - 140, 10);
             }
         }
 
-        // Main draw function
+        // Main draw function.
         function draw() {
+            if (!gameStarted) {
+                drawStartMenu();
+                return;
+            }
             drawStars();
-            obstacles.forEach(obs => {
-                drawObstacle(obs);
-            });
+            obstacles.forEach(obs => drawObstacle(obs));
             drawPlayer();
             drawParticles();
             drawUI();
             if (gameOver) {
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
                 ctx.fillStyle = '#fff';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
                 ctx.font = '40px sans-serif';
-                ctx.fillText('Game Over!', canvas.width / 2 - 100, canvas.height / 2 - 20);
+                ctx.fillText('Game Over!', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40);
                 ctx.font = '20px sans-serif';
                 let endMessage = score >= highScore ? "New High Score!" : "High Score: " + highScore;
-                ctx.fillText(endMessage, canvas.width / 2 - 90, canvas.height / 2 + 20);
-                ctx.fillText('Press Space to Restart', canvas.width / 2 - 110, canvas.height / 2 + 50);
-                restartBtn.style.display = 'inline-block';
+                ctx.fillText(endMessage, GAME_WIDTH / 2, GAME_HEIGHT / 2);
+                ctx.fillText('Press Space to Restart', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 40);
+            }
+            // Overlay pause message if paused.
+            if (paused && gameStarted) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+                ctx.fillStyle = '#fff';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = '40px sans-serif';
+                ctx.fillText('Paused', GAME_WIDTH / 2, GAME_HEIGHT / 2);
             }
         }
 
-        // Main game loop
-        function gameLoop() {
-            if (!gameOver) {
-                update();
+        // --- Main Game Loop ---
+        let lastFrameTime = performance.now();
+        function gameLoop(currentTime) {
+            if (paused) {
                 draw();
                 requestAnimationFrame(gameLoop);
-            } else {
-                draw();
+                return;
             }
+            const dt = (currentTime - lastFrameTime) / 1000;
+            lastFrameTime = currentTime;
+            update(dt);
+            draw();
+            if (!gameOver) requestAnimationFrame(gameLoop);
+            else draw();
         }
 
-        // Start the game
-        gameLoop();
+        // Initially show the start menu.
+        drawStartMenu();
     </script>
 </body>
 

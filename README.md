@@ -3,13 +3,15 @@
 Shape Escape 2.0 is a fast-paced, minimalist arcade game built with HTML and JavaScript. Control your shape, morph to match falling obstacles, dash to reach distant targets, and now—try to beat your high score within a session!
 
 ## 🚀 Features
-- **Smooth Morph Animations:** Morph between circle, square, and triangle.
-- **Dash (Pulse) Mechanic:** Quickly dash left or right using the space bar to reach obstacles.
+- **Adaptive Difficulty:** Obstacle speed and spawn rates adjust based on your score.
+- **Pause Functionality:** Pause and resume the game at any time using the Escape key.
+- **Improved Dash Mechanics:** Dash in the current or last moved direction using the Space bar.
 - **Dynamic Starfield Background:** Enjoy an immersive, animated background.
-- **Combo Multipliers:** Score increases when matching shapes in rapid succession.
-- **Shield Power-ups:** Temporarily protect yourself from mismatches.
-- **Session High Score Tracking:** Your highest score in the current session is tracked and displayed on game over.
-- **Restart on Space Bar:** After a game over, press the space bar to restart instantly.
+- **Shield Power-ups:** Collect power-ups that grant temporary protection against mismatches.
+- **Session High Score Tracking:** Keep track of your highest score during each session.
+- **Enhanced Combo System:** Build score multipliers by matching shapes in rapid succession.
+- **Smooth Morph Animations:** Experience visually appealing transitions between circle, square, and triangle.
+- **Instant Restart:** Restart immediately by pressing the Space bar after a game over.
 
 ## 🎮 How to Play
 - **Movement:**  
@@ -19,14 +21,30 @@ Shape Escape 2.0 is a fast-paced, minimalist arcade game built with HTML and Jav
   - Press **1** for Circle  
   - Press **2** for Square  
   - Press **3** for Triangle
-- **Objective:**  
-  - Morph into the correct shape to match falling obstacles.
-  - Build combos and collect power-ups.
-  - Beat your session's high score!
+- **Pause**
+  - Press **Escape** to pause or resume the game.
 - **Restart:**  
   - When you lose, press the **space bar** or click the restart button to play again.
+- **Objective:**  
+  - Morph into the correct shape to match incoming obstacles.
+  - Build combo multipliers by rapidly matching shapes.
+  - Collect shield power-ups to avoid mismatches.
+  - Survive as long as possible and beat your high score!
 
 ## 💻 Getting Started
 1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/shape-escape.git
+  git clone https://github.com/yourusername/shape-escape.git
+2. Navigate to the project directory:
+  cd shape-escape
+3. Open **index.html** in your preferred web browser.
+
+## Technologies Used
+- **HTML5 Canvas:** For rendering graphics.
+- **Vanilla JavaScript:** For core gameplay logic.
+- **CSS3:** For responsive styling.
+
+## Contributing
+Contributions are welcome! If you have ideas for improvements or new features, feel free to fork the repository and submit a pull request.
+
+## License
+This project is licensed under the MIT License. See the **LICENSE** file for details.
