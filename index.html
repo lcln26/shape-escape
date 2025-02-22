@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Shape Escape 2.0 - Refined Edition</title>
+    <style>
+        body {
+            margin: 0;
+            background: #111;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+        }
+
+        h1 {
+            margin-top: 20px;
+        }
+
+        canvas {
+            display: block;
+            margin: 20px auto;
+            border: 2px solid #fff;
+        }
+
+        #restartBtn {
+            display: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            margin-top: 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Shape Escape 2.0</h1>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <button id="restartBtn">Restart Game</button>
+    <p>
+        Move: ← / → &nbsp;&nbsp; Morph: [1]=Circle, [2]=Square, [3]=Triangle
+    </p>
+    <script>
+        // Get canvas and context
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Game state variables
+        let gameOver = false;
+        let score = 0;
+        let gameTime = 0; // frame count
+        let spawnTimer = 0;
+        const baseSpawnInterval = 90; // base frames between obstacle spawns
+
+        // Combo system
+        let comboCount = 0;
+        let comboTimer = 0;
+        const comboResetTime = 120; // frames until combo resets
+
+        // Shield power-up variables
+        let shieldActive = false;
+        let shieldTimer = 0;
+        const shieldDuration = 300; // frames shield lasts
+
+        // Player object with morph animation support
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height - 70,
+            size: 50,
+            shape: 'circle',    // 'circle', 'square', 'triangle'
+            speed: 5,
+            morphScale: 1,      // scale for morph animation (pulsing effect)
+        };
+
+        // Arrays for obstacles, particles, and stars (background)
+        const obstacles = []; // obstacles have: x, y, size, type, shape
+        // type: "normal" or "powerup" (shield)
+        const particles = [];
+        const stars = [];
+
+        // Create a starfield background (50 stars)
+        const starCount = 50;
+        for (let i = 0; i < starCount; i++) {
+            stars.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: Math.random() * 2 + 1,
+                speed: Math.random() * 0.5 + 0.2,
+            });
+        }
+
+        // Key state for movement
+        const keys = { left: false, right: false };
+
+        // Input event listeners
+        document.addEventListener('keydown', (e) => {
+            if (gameOver) return;
+            if (e.key === 'ArrowLeft') keys.left = true;
+            if (e.key === 'ArrowRight') keys.right = true;
+            if (e.key === '1' && player.shape !== 'circle') {
+                player.shape = 'circle';
+                player.morphScale = 1.5;
+            }
+            if (e.key === '2' && player.shape !== 'square') {
+                player.shape = 'square';
+                player.morphScale = 1.5;
+            }
+            if (e.key === '3' && player.shape !== 'triangle') {
+                player.shape = 'triangle';
+                player.morphScale = 1.5;
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft') keys.left = false;
+            if (e.key === 'ArrowRight') keys.right = false;
+        });
+
+        // Restart button functionality
+        const restartBtn = document.getElementById('restartBtn');
+        restartBtn.addEventListener('click', restartGame);
+        function restartGame() {
+            gameOver = false;
+            score = 0;
+            gameTime = 0;
+            spawnTimer = 0;
+            comboCount = 0;
+            comboTimer = 0;
+            shieldActive = false;
+            shieldTimer = 0;
+            obstacles.length = 0;
+            particles.length = 0;
+            player.x = canvas.width / 2;
+            player.shape = 'circle';
+            player.morphScale = 1;
+            restartBtn.style.display = 'none';
+            gameLoop();
+        }
+
+        // Utility: simple collision detection (circle-based)
+        function isColliding(a, b) {
+            const dx = a.x - b.x;
+            const dy = a.y - b.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            return distance < (a.size / 2 + b.size / 2);
+        }
+
+        // Spawn obstacles
+        // 90% chance to spawn a normal obstacle; 10% chance for a power-up.
+        function spawnObstacle() {
+            const size = 40;
+            const x = Math.random() * (canvas.width - size) + size / 2;
+            const y = -size / 2;
+            if (Math.random() < 0.1) {
+                // Power-up: a shield power-up (drawn as a star)
+                obstacles.push({ x, y, size: 30, type: 'powerup', shape: 'star' });
+            } else {
+                // Normal obstacle: randomly choose one of the three shapes
+                const shapes = ['circle', 'square', 'triangle'];
+                const shape = shapes[Math.floor(Math.random() * shapes.length)];
+                obstacles.push({ x, y, size, type: 'normal', shape });
+            }
+        }
+
+        // Particle effect (for collisions and morphing)
+        function createParticles(x, y, color, amount = 15) {
+            for (let i = 0; i < amount; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 3,
+                    vy: (Math.random() - 0.5) * 3,
+                    alpha: 1,
+                    size: Math.random() * 3 + 2,
+                    color: color,
+                });
+            }
+        }
+
+        // Update starfield
+        function updateStars() {
+            stars.forEach(star => {
+                star.y += star.speed;
+                if (star.y > canvas.height) {
+                    star.y = 0;
+                    star.x = Math.random() * canvas.width;
+                }
+            });
+        }
+
+        // Update particles
+        function updateParticles() {
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha -= 0.02;
+            });
+            for (let i = particles.length - 1; i >= 0; i--) {
+                if (particles[i].alpha <= 0) particles.splice(i, 1);
+            }
+        }
+
+        // Update game state
+        function update() {
+            if (gameOver) return;
+            gameTime++;
+
+            // Update player movement
+            if (keys.left) {
+                player.x -= player.speed;
+            }
+            if (keys.right) {
+                player.x += player.speed;
+            }
+            // Clamp player position
+            if (player.x - player.size / 2 < 0) player.x = player.size / 2;
+            if (player.x + player.size / 2 > canvas.width) player.x = canvas.width - player.size / 2;
+
+            // Gradually reduce morph scale back to 1 for smooth transition
+            if (player.morphScale > 1) {
+                player.morphScale -= 0.05;
+                if (player.morphScale < 1) player.morphScale = 1;
+            }
+
+            // Adjust obstacle speed: slower increase for better playability.
+            const obstacleSpeed = 2 + Math.min(score, 500) * 0.005;  // max around 4.5
+            obstacles.forEach(obs => {
+                obs.y += obstacleSpeed;
+            });
+            // Remove obstacles that have gone off-screen
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                if (obstacles[i].y - obstacles[i].size / 2 > canvas.height) {
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            // Collision detection
+            obstacles.forEach((obs) => {
+                if (isColliding(player, obs)) {
+                    if (obs.type === 'normal') {
+                        // If shapes match, increase score and combo; otherwise, check shield
+                        if (player.shape === obs.shape) {
+                            score += 10 * (1 + comboCount);
+                            comboCount++;
+                            comboTimer = 0; // reset combo timer
+                            createParticles(obs.x, obs.y, '#00ff00', 10);
+                            obs.y = canvas.height + 100;
+                        } else {
+                            if (shieldActive) {
+                                shieldActive = false;
+                                shieldTimer = 0;
+                                createParticles(obs.x, obs.y, '#ffff00', 10);
+                                obs.y = canvas.height + 100;
+                            } else {
+                                gameOver = true;
+                            }
+                        }
+                    } else if (obs.type === 'powerup') {
+                        shieldActive = true;
+                        shieldTimer = shieldDuration;
+                        createParticles(obs.x, obs.y, '#00ffff', 15);
+                        obs.y = canvas.height + 100;
+                    }
+                }
+            });
+
+            // Update combo timer
+            comboTimer++;
+            if (comboTimer > comboResetTime) {
+                comboCount = 0;
+                comboTimer = 0;
+            }
+
+            // Update shield timer
+            if (shieldActive) {
+                shieldTimer--;
+                if (shieldTimer <= 0) {
+                    shieldActive = false;
+                }
+            }
+
+            // Update starfield and particles
+            updateStars();
+            updateParticles();
+
+            // Gradually adjust spawn interval (but do not let it drop too low)
+            const currentSpawnInterval = Math.max(80, baseSpawnInterval - Math.floor(score / 400));
+            spawnTimer++;
+            if (spawnTimer > currentSpawnInterval) {
+                spawnObstacle();
+                spawnTimer = 0;
+            }
+        }
+
+        // Draw starfield background with a subtle gradient
+        function drawStars() {
+            // Create vertical gradient
+            const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            grad.addColorStop(0, '#111');
+            grad.addColorStop(1, '#222');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            // Draw stars with a soft glow
+            stars.forEach(star => {
+                ctx.fillStyle = '#fff';
+                ctx.globalAlpha = 0.8;
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        // Draw player with soft shadow and shield indicator
+        function drawPlayer() {
+            ctx.save();
+            ctx.translate(player.x, player.y);
+            ctx.scale(player.morphScale, player.morphScale);
+            ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = '#2E86C1';
+            const half = player.size / 2;
+            if (player.shape === 'circle') {
+                ctx.beginPath();
+                ctx.arc(0, 0, half, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (player.shape === 'square') {
+                ctx.fillRect(-half, -half, player.size, player.size);
+            } else if (player.shape === 'triangle') {
+                ctx.beginPath();
+                ctx.moveTo(0, -half);
+                ctx.lineTo(-half, half);
+                ctx.lineTo(half, half);
+                ctx.closePath();
+                ctx.fill();
+            }
+            ctx.restore();
+            // Draw shield outline if active
+            if (shieldActive) {
+                ctx.strokeStyle = '#00ffff';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, half + 8, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        }
+
+        // Draw obstacle with improved stroke and soft shadow
+        function drawObstacle(obs) {
+            ctx.lineWidth = 3;
+            ctx.shadowColor = "rgba(0, 0, 0, 0.3)";
+            ctx.shadowBlur = 8;
+            if (obs.type === 'normal') {
+                ctx.strokeStyle = '#fff';
+                if (obs.shape === 'circle') {
+                    ctx.beginPath();
+                    ctx.arc(obs.x, obs.y, obs.size / 2, 0, Math.PI * 2);
+                    ctx.stroke();
+                } else if (obs.shape === 'square') {
+                    ctx.strokeRect(obs.x - obs.size / 2, obs.y - obs.size / 2, obs.size, obs.size);
+                } else if (obs.shape === 'triangle') {
+                    ctx.beginPath();
+                    ctx.moveTo(obs.x, obs.y - obs.size / 2);
+                    ctx.lineTo(obs.x - obs.size / 2, obs.y + obs.size / 2);
+                    ctx.lineTo(obs.x + obs.size / 2, obs.y + obs.size / 2);
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+            } else if (obs.type === 'powerup') {
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#ffd700';
+                ctx.beginPath();
+                let spikes = 5, outerRadius = obs.size / 2, innerRadius = outerRadius / 2;
+                let rot = Math.PI / 2 * 3;
+                let cx = obs.x, cy = obs.y;
+                let step = Math.PI / spikes;
+                ctx.moveTo(cx, cy - outerRadius);
+                for (let i = 0; i < spikes; i++) {
+                    let x = cx + Math.cos(rot) * outerRadius;
+                    let y = cy + Math.sin(rot) * outerRadius;
+                    ctx.lineTo(x, y);
+                    rot += step;
+                    x = cx + Math.cos(rot) * innerRadius;
+                    y = cy + Math.sin(rot) * innerRadius;
+                    ctx.lineTo(x, y);
+                    rot += step;
+                }
+                ctx.closePath();
+                ctx.fill();
+            }
+            ctx.shadowBlur = 0;
+        }
+
+        // Draw particles
+        function drawParticles() {
+            particles.forEach(p => {
+                ctx.globalAlpha = p.alpha;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        // Draw UI: score, combo multiplier, shield timer
+        function drawUI() {
+            // Draw score with a subtle shadow
+            ctx.shadowColor = "rgba(0,0,0,0.5)";
+            ctx.shadowBlur = 4;
+            ctx.fillStyle = '#fff';
+            ctx.font = '20px sans-serif';
+            ctx.fillText('Score: ' + score, 10, 30);
+            ctx.shadowBlur = 0;
+            if (comboCount > 1) {
+                ctx.fillText('Combo x' + (comboCount + 1), 10, 55);
+            }
+            if (shieldActive) {
+                ctx.fillText('Shield: ' + Math.ceil(shieldTimer / 60) + 's', canvas.width - 140, 30);
+            }
+        }
+
+        // Main draw function
+        function draw() {
+            drawStars();
+            obstacles.forEach(obs => {
+                drawObstacle(obs);
+            });
+            drawPlayer();
+            drawParticles();
+            drawUI();
+            if (gameOver) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#fff';
+                ctx.font = '40px sans-serif';
+                ctx.fillText('Game Over!', canvas.width / 2 - 100, canvas.height / 2);
+                ctx.font = '20px sans-serif';
+                ctx.fillText('Press Restart to play again', canvas.width / 2 - 120, canvas.height / 2 + 40);
+                restartBtn.style.display = 'inline-block';
+            }
+        }
+
+        // Main game loop
+        function gameLoop() {
+            if (!gameOver) {
+                update();
+                draw();
+                requestAnimationFrame(gameLoop);
+            } else {
+                draw();
+            }
+        }
+
+        // Start the game
+        gameLoop();
+    </script>
+</body>
+
+</html>
