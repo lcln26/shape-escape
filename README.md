@@ -1,6 +1,6 @@
-# Shape Escape 2.0
+# Shape Escape
 
-Shape Escape 2.0 is a fast-paced, minimalist arcade game built with HTML and JavaScript. Control your shape, morph to match falling obstacles, dash to reach distant targets, and now—try to beat your high score within a session!
+Shape Escape is a fast-paced, minimalist arcade game built with HTML and JavaScript. Control your shape, morph to match falling obstacles, dash to reach distant targets, and now—try to beat your high score within a session!
 
 ## 🚀 Features
 - **Adaptive Difficulty:** Obstacle speed and spawn rates adjust based on your score.
