@@ -8,7 +8,7 @@ Shape Escape 2.0 is a fast-paced, minimalist arcade game built with HTML and Jav
 - **Improved Dash Mechanics:** Dash in the current or last moved direction using the Space bar.
 - **Dynamic Starfield Background:** Enjoy an immersive, animated background.
 - **Shield Power-ups:** Collect power-ups that grant temporary protection against mismatches.
-- **Session High Score Tracking:** Keep track of your highest score during each session.
+- **Persistent High Score Tracking:** Keep track of your highest score across sessions.
 - **Enhanced Combo System:** Build score multipliers by matching shapes in rapid succession.
 - **Smooth Morph Animations:** Experience visually appealing transitions between circle, square, and triangle.
 - **Instant Restart:** Restart immediately by pressing the Space bar after a game over.

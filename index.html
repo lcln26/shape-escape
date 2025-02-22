@@ -55,19 +55,9 @@
         <span><strong>Dash:</strong> [Space]</span>
     </div>
     <script>
-        // --- Canvas Setup with Device Pixel Ratio ---
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const GAME_WIDTH = 800,
-            GAME_HEIGHT = 600;
+        // --- Global Constants ---
+        const GAME_WIDTH = 800, GAME_HEIGHT = 600;
         const dpr = window.devicePixelRatio || 1;
-        canvas.width = GAME_WIDTH * dpr;
-        canvas.height = GAME_HEIGHT * dpr;
-        canvas.style.width = GAME_WIDTH + "px";
-        canvas.style.height = GAME_HEIGHT + "px";
-        ctx.scale(dpr, dpr);
-
-        // --- Game Constants (using seconds) ---
         const BASE_SPAWN_INTERVAL = 1.0;
         const COMBO_RESET_TIME = 2.0;
         const SHIELD_DURATION = 5.0;
@@ -75,558 +65,605 @@
         const MOVE_SPEED = 400;
         const DASH_SPEED = 1200;
         const MORPH_SCALE_DECAY = 3;
+        // Cap dt to prevent large time steps (in seconds)
+        const MAX_DT = 0.1;
 
-        // --- Game State Variables ---
-        let gameOver = false;
-        let score = 0;
-        let highScore = 0;
-        let spawnTimer = 0;
-        let comboCount = 0;
-        let comboTimer = 0;
-        let shieldActive = false;
-        let shieldTimer = 0;
-        let gameStarted = false; // Flag for start menu
-        let paused = false;      // Global pause flag
-
-        // --- Player Object ---
-        const player = {
-            x: GAME_WIDTH / 2,
-            y: GAME_HEIGHT - 70,
-            size: 50,
-            shape: 'circle', // 'circle', 'square', 'triangle'
-            morphScale: 1,
-            isDashing: false,
-            dashTime: 0,
-            dashDirection: 0,
-            lastDirection: 1
+        // --- Game States ---
+        const GameStateEnum = {
+            START: "start",
+            PLAYING: "playing",
+            PAUSED: "paused",
+            GAMEOVER: "gameover"
         };
 
-        // --- Arrays for Obstacles, Particles, and Stars ---
-        const obstacles = [];
-        const particles = [];
-        const stars = [];
-        const starCount = 50;
-        for (let i = 0; i < starCount; i++) {
-            stars.push({
-                x: Math.random() * GAME_WIDTH,
-                y: Math.random() * GAME_HEIGHT,
-                size: Math.random() * 2 + 1,
-                speed: Math.random() * 0.5 + 0.2,
-            });
-        }
-
-        // --- Difficulty Functions ---
-        function getObstacleSpeed(score) {
-            if (score < 5000) {
-                return 150 + (score / 5000) * 200; // 150 to 350
-            } else if (score < 15000) {
-                return 350 + ((score - 5000) / 10000) * 150; // 350 to 500
-            } else {
-                return 500 + ((score - 15000) / 10000) * 100; // e.g., 500 to 600
-            }
-        }
-
-        function getSpawnInterval(score) {
-            if (score < 5000) {
-                return 1.0 - (score / 5000) * 0.1; // 1.0s to 0.9s
-            } else if (score < 15000) {
-                return 0.9 - ((score - 5000) / 10000) * 0.2; // 0.9s to 0.7s
-            } else {
-                return Math.max(0.5, 0.7 - ((score - 15000) / 10000) * 0.2); // down to 0.5s minimum
-            }
-        }
-
-        // --- Input Handling ---
-        const keys = { left: false, right: false };
-        document.addEventListener('keydown', (e) => {
-            // Toggle pause on Escape key.
-            if (e.code === 'Escape') {
-                paused = !paused;
-                if (!paused) {
-                    // When unpausing, reset the lastFrameTime to avoid a huge dt jump.
-                    lastFrameTime = performance.now();
-                    requestAnimationFrame(gameLoop);
-                }
-                return;
-            }
-            // If the game is paused, Space should also unpause.
-            if (paused && e.code === 'Space') {
-                paused = false;
-                lastFrameTime = performance.now();
-                requestAnimationFrame(gameLoop);
-                return;
-            }
-            // Start menu: begin game on Space press.
-            if (!gameStarted && e.code === 'Space') {
-                gameStarted = true;
-                lastFrameTime = performance.now();
-                requestAnimationFrame(gameLoop);
-                return;
-            }
-            // When not in game over and not paused, process input normally.
-            if (!gameOver && !paused) {
-                if (e.key === 'ArrowLeft') {
-                    keys.left = true;
-                    player.lastDirection = -1;
-                }
-                if (e.key === 'ArrowRight') {
-                    keys.right = true;
-                    player.lastDirection = 1;
-                }
-                if (e.key === '1' && player.shape !== 'circle') {
-                    player.shape = 'circle';
-                    player.morphScale = 1.5;
-                }
-                if (e.key === '2' && player.shape !== 'square') {
-                    player.shape = 'square';
-                    player.morphScale = 1.5;
-                }
-                if (e.key === '3' && player.shape !== 'triangle') {
-                    player.shape = 'triangle';
-                    player.morphScale = 1.5;
-                }
-                // Dash mechanic.
-                if (e.code === 'Space') {
-                    if (!player.isDashing) {
-                        if (keys.left) {
-                            player.dashDirection = -1;
-                        } else if (keys.right) {
-                            player.dashDirection = 1;
-                        } else {
-                            player.dashDirection = player.lastDirection;
-                        }
-                        player.isDashing = true;
-                        player.dashTime = DASH_DURATION;
-                        createParticles(player.x, player.y, '#ffffff', 10);
-                    }
-                    e.preventDefault();
-                }
-            } else {
-                // If the game is over, pressing Space will restart.
-                if (gameOver && e.code === 'Space') {
-                    restartGame();
-                }
-            }
-        });
-        document.addEventListener('keyup', (e) => {
-            if (e.key === 'ArrowLeft') keys.left = false;
-            if (e.key === 'ArrowRight') keys.right = false;
-        });
-
-        // --- Restart Game Function ---
-        function restartGame() {
-            gameOver = false;
-            score = 0;
-            spawnTimer = 0;
-            comboCount = 0;
-            comboTimer = 0;
-            shieldActive = false;
-            shieldTimer = 0;
-            obstacles.length = 0;
-            particles.length = 0;
-            player.x = GAME_WIDTH / 2;
-            player.shape = 'circle';
-            player.morphScale = 1;
-            player.isDashing = false;
-            lastFrameTime = performance.now();
-            requestAnimationFrame(gameLoop);
-        }
-
-        // --- Utility: Collision Detection ---
-        function isColliding(a, b) {
-            const dx = a.x - b.x;
-            const dy = a.y - b.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            return distance <= (a.size / 2 + b.size / 2 + 3);
-        }
-
-        // --- Spawn Obstacles ---
-        function spawnObstacle() {
-            const size = 40;
-            const x = Math.random() * (GAME_WIDTH - size) + size / 2;
-            const y = -size / 2;
-            if (Math.random() < 0.1) {
-                obstacles.push({ x, y, size: 30, type: 'powerup', shape: 'star' });
-            } else {
-                const shapes = ['circle', 'square', 'triangle'];
-                const shape = shapes[Math.floor(Math.random() * shapes.length)];
-                obstacles.push({ x, y, size, type: 'normal', shape });
-            }
-        }
-
-        // --- Particle Effects ---
-        function createParticles(x, y, color, amount = 15) {
-            for (let i = 0; i < amount; i++) {
-                particles.push({
-                    x: x,
-                    y: y,
-                    vx: (Math.random() - 0.5) * 3,
-                    vy: (Math.random() - 0.5) * 3,
-                    alpha: 1,
-                    size: Math.random() * 3 + 2,
-                    color: color,
-                });
-            }
-        }
-
-        // --- Update Stars ---
-        function updateStars() {
-            stars.forEach(star => {
-                star.y += star.speed;
-                if (star.y > GAME_HEIGHT) {
-                    star.y = 0;
-                    star.x = Math.random() * GAME_WIDTH;
-                }
-            });
-        }
-
-        // --- Update Particles ---
-        function updateParticles(dt) {
-            particles.forEach(p => {
-                p.x += p.vx;
-                p.y += p.vy;
-                p.alpha -= 0.02 * dt * 60;
-            });
-            for (let i = particles.length - 1; i >= 0; i--) {
-                if (particles[i].alpha <= 0) particles.splice(i, 1);
-            }
-        }
-
-        // --- Update Game State ---
-        function update(dt) {
-            if (!gameStarted || gameOver || paused) return;
-
-            // Handle dash movement.
-            if (player.isDashing) {
-                player.x += DASH_SPEED * player.dashDirection * dt;
-                player.dashTime -= dt;
-                if (player.dashTime <= 0) {
-                    player.isDashing = false;
-                }
-            } else {
-                if (keys.left) player.x -= MOVE_SPEED * dt;
-                if (keys.right) player.x += MOVE_SPEED * dt;
-            }
-            // Clamp player position.
-            if (player.x - player.size / 2 < 0) player.x = player.size / 2;
-            if (player.x + player.size / 2 > GAME_WIDTH) player.x = GAME_WIDTH - player.size / 2;
-
-            // Morph scale decay.
-            if (player.morphScale > 1) {
-                player.morphScale -= MORPH_SCALE_DECAY * dt;
-                if (player.morphScale < 1) player.morphScale = 1;
-            }
-
-            const obstacleSpeed = getObstacleSpeed(score);
-            let currentSpawnInterval = getSpawnInterval(score);
-
-            obstacles.forEach(obs => {
-                obs.y += obstacleSpeed * dt;
-            });
-            for (let i = obstacles.length - 1; i >= 0; i--) {
-                if (obstacles[i].y - obstacles[i].size / 2 > GAME_HEIGHT) {
-                    obstacles.splice(i, 1);
-                }
-            }
-
-            obstacles.forEach((obs) => {
-                if (isColliding(player, obs)) {
-                    if (obs.type === 'normal') {
-                        if (player.shape === obs.shape) {
-                            score += 10 * (1 + comboCount);
-                            comboCount++;
-                            comboTimer = 0;
-                            createParticles(obs.x, obs.y, '#00ff00', 10);
-                            obs.y = GAME_HEIGHT + 100;
-                        } else {
-                            if (shieldActive) {
-                                shieldActive = false;
-                                shieldTimer = 0;
-                                createParticles(obs.x, obs.y, '#ffff00', 10);
-                                obs.y = GAME_HEIGHT + 100;
-                            } else {
-                                gameOver = true;
-                                if (score > highScore) highScore = score;
-                            }
-                        }
-                    } else if (obs.type === 'powerup') {
-                        shieldActive = true;
-                        shieldTimer = SHIELD_DURATION;
-                        createParticles(obs.x, obs.y, '#00ffff', 15);
-                        obs.y = GAME_HEIGHT + 100;
-                    }
-                }
-            });
-
-            comboTimer += dt;
-            if (comboTimer > COMBO_RESET_TIME) {
-                comboCount = 0;
-                comboTimer = 0;
-            }
-
-            if (shieldActive) {
-                shieldTimer -= dt;
-                if (shieldTimer <= 0) shieldActive = false;
-            }
-
-            spawnTimer += dt;
-            if (spawnTimer > currentSpawnInterval) {
-                spawnObstacle();
-                spawnTimer = 0;
-            }
-
-            updateStars();
-            updateParticles(dt);
-        }
-
-        // --- Drawing Functions ---
-        function drawStars() {
-            const grad = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
-            grad.addColorStop(0, '#111');
-            grad.addColorStop(1, '#222');
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-            stars.forEach(star => {
-                ctx.fillStyle = '#fff';
-                ctx.globalAlpha = 0.8;
-                ctx.beginPath();
-                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
-                ctx.fill();
-            });
-            ctx.globalAlpha = 1;
-        }
-
-        function drawStartMenu() {
-            const grad = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
-            grad.addColorStop(0, '#111');
-            grad.addColorStop(1, '#222');
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-            ctx.fillStyle = '#fff';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.font = '40px sans-serif';
-            ctx.fillText('Shape Escape 2.0', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 60);
-            ctx.font = '20px sans-serif';
-            ctx.fillText('Press Space to Start', GAME_WIDTH / 2, GAME_HEIGHT / 2);
-        }
-
-        // Enhanced drawPlayer with Adaptive Shield.
-        function drawPlayer() {
-            ctx.save();
-            ctx.translate(player.x, player.y);
-            ctx.scale(player.morphScale, player.morphScale);
-            ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
-            ctx.shadowBlur = 10;
-            ctx.fillStyle = '#2E86C1';
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = '#fff';
-            const half = player.size / 2;
-            if (player.shape === 'circle') {
-                ctx.beginPath();
+        // --- Helper Functions ---
+        // Draws a shape (circle, square, triangle) at the origin using the given size.
+        function drawShape(ctx, shape, size) {
+            const half = size / 2;
+            ctx.beginPath();
+            if (shape === 'circle') {
                 ctx.arc(0, 0, half, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.stroke();
-            } else if (player.shape === 'square') {
-                ctx.beginPath();
-                ctx.rect(-half, -half, player.size, player.size);
-                ctx.fill();
-                ctx.stroke();
-            } else if (player.shape === 'triangle') {
-                ctx.beginPath();
+            } else if (shape === 'square') {
+                ctx.rect(-half, -half, size, size);
+            } else if (shape === 'triangle') {
                 ctx.moveTo(0, -half);
                 ctx.lineTo(-half, half);
                 ctx.lineTo(half, half);
                 ctx.closePath();
-                ctx.fill();
+            }
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        // Draws a shield outline around a shape.
+        function drawShield(ctx, shape, size, offset) {
+            const half = size / 2;
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = '#00ffff';
+            if (shape === 'circle') {
+                ctx.beginPath();
+                ctx.arc(0, 0, half + offset, 0, Math.PI * 2);
+                ctx.stroke();
+            } else if (shape === 'square') {
+                ctx.beginPath();
+                ctx.rect(-half - offset, -half - offset, size + 2 * offset, size + 2 * offset);
+                ctx.stroke();
+            } else if (shape === 'triangle') {
+                const A = { x: 0, y: -half };
+                const B = { x: -half, y: half };
+                const C = { x: half, y: half };
+                function computeOffsetVertex(P, Pprev, Pnext, offset) {
+                    let v1 = { x: Pprev.x - P.x, y: Pprev.y - P.y };
+                    let v2 = { x: Pnext.x - P.x, y: Pnext.y - P.y };
+                    let mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+                    let mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+                    v1.x /= mag1; v1.y /= mag1;
+                    v2.x /= mag2; v2.y /= mag2;
+                    let bisector = { x: v1.x + v2.x, y: v1.y + v2.y };
+                    let magBis = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
+                    if (magBis === 0) return { x: P.x, y: P.y };
+                    bisector.x /= magBis; bisector.y /= magBis;
+                    let dot = v1.x * v2.x + v1.y * v2.y;
+                    dot = Math.min(1, Math.max(-1, dot));
+                    let angle = Math.acos(dot);
+                    let factor = offset / Math.sin(angle / 2);
+                    return { x: P.x - factor * bisector.x, y: P.y - factor * bisector.y };
+                }
+                const A_off = computeOffsetVertex(A, B, C, offset);
+                const B_off = computeOffsetVertex(B, C, A, offset);
+                const C_off = computeOffsetVertex(C, A, B, offset);
+                ctx.beginPath();
+                ctx.moveTo(A_off.x, A_off.y);
+                ctx.lineTo(B_off.x, B_off.y);
+                ctx.lineTo(C_off.x, C_off.y);
+                ctx.closePath();
                 ctx.stroke();
             }
-            if (shieldActive) {
-                ctx.lineWidth = 4;
-                ctx.strokeStyle = '#00ffff';
-                const offset = 6;
-                if (player.shape === 'circle') {
-                    ctx.beginPath();
-                    ctx.arc(0, 0, half + offset, 0, Math.PI * 2);
-                    ctx.stroke();
-                } else if (player.shape === 'square') {
-                    ctx.beginPath();
-                    ctx.rect(-half - offset, -half - offset, player.size + 2 * offset, player.size + 2 * offset);
-                    ctx.stroke();
-                } else if (player.shape === 'triangle') {
-                    const offsetVal = offset;
-                    const A = { x: 0, y: -half };
-                    const B = { x: -half, y: half };
-                    const C = { x: half, y: half };
+        }
 
-                    function computeOffsetVertex(P, Pprev, Pnext, offset) {
-                        let v1 = { x: Pprev.x - P.x, y: Pprev.y - P.y };
-                        let v2 = { x: Pnext.x - P.x, y: Pnext.y - P.y };
-                        let mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
-                        let mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
-                        v1.x /= mag1; v1.y /= mag1;
-                        v2.x /= mag2; v2.y /= mag2;
-                        let bisector = { x: v1.x + v2.x, y: v1.y + v2.y };
-                        let magBis = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
-                        if (magBis === 0) return { x: P.x, y: P.y };
-                        bisector.x /= magBis; bisector.y /= magBis;
-                        let dot = v1.x * v2.x + v1.y * v2.y;
-                        dot = Math.min(1, Math.max(-1, dot));
-                        let angle = Math.acos(dot);
-                        let factor = offset / Math.sin(angle / 2);
-                        return { x: P.x - factor * bisector.x, y: P.y - factor * bisector.y };
+        // --- Classes ---
+        class Player {
+            constructor(game) {
+                this.game = game;
+                this.x = GAME_WIDTH / 2;
+                this.y = GAME_HEIGHT - 70;
+                this.size = 50;
+                this.shape = 'circle';
+                this.morphScale = 1;
+                this.isDashing = false;
+                this.dashTime = 0;
+                this.dashDirection = 0;
+                this.lastDirection = 1;
+            }
+            update(dt, keys) {
+                if (this.isDashing) {
+                    this.x += DASH_SPEED * this.dashDirection * dt;
+                    this.dashTime -= dt;
+                    if (this.dashTime <= 0) {
+                        this.isDashing = false;
                     }
-
-                    const A_off = computeOffsetVertex(A, B, C, offsetVal);
-                    const B_off = computeOffsetVertex(B, C, A, offsetVal);
-                    const C_off = computeOffsetVertex(C, A, B, offsetVal);
-
-                    ctx.beginPath();
-                    ctx.moveTo(A_off.x, A_off.y);
-                    ctx.lineTo(B_off.x, B_off.y);
-                    ctx.lineTo(C_off.x, C_off.y);
-                    ctx.closePath();
-                    ctx.stroke();
+                } else {
+                    if (keys.left) this.x -= MOVE_SPEED * dt;
+                    if (keys.right) this.x += MOVE_SPEED * dt;
+                }
+                // Clamp position.
+                if (this.x - this.size / 2 < 0) this.x = this.size / 2;
+                if (this.x + this.size / 2 > GAME_WIDTH) this.x = GAME_WIDTH - this.size / 2;
+                // Morph scale decay.
+                if (this.morphScale > 1) {
+                    this.morphScale -= MORPH_SCALE_DECAY * dt;
+                    if (this.morphScale < 1) this.morphScale = 1;
                 }
             }
-            ctx.restore();
-        }
-
-        function drawObstacle(obs) {
-            ctx.lineWidth = 3;
-            ctx.shadowColor = "rgba(0, 0, 0, 0.3)";
-            ctx.shadowBlur = 8;
-            if (obs.type === 'normal') {
-                ctx.fillStyle = '#222';
+            draw(ctx, shieldActive) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.scale(this.morphScale, this.morphScale);
+                ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+                ctx.shadowBlur = 10;
+                ctx.fillStyle = '#2E86C1';
+                ctx.lineWidth = 3;
                 ctx.strokeStyle = '#fff';
-                if (obs.shape === 'circle') {
+                drawShape(ctx, this.shape, this.size);
+                if (shieldActive) {
+                    drawShield(ctx, this.shape, this.size, 6);
+                }
+                ctx.restore();
+            }
+        }
+
+        class Obstacle {
+            constructor(x, y, size, type, shape) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.type = type; // 'normal' or 'powerup'
+                this.shape = shape;
+            }
+            update(dt, speed) {
+                this.y += speed * dt;
+            }
+            draw(ctx) {
+                ctx.lineWidth = 3;
+                ctx.shadowColor = "rgba(0, 0, 0, 0.3)";
+                ctx.shadowBlur = 8;
+                if (this.type === 'normal') {
+                    ctx.fillStyle = '#222';
+                    ctx.strokeStyle = '#fff';
+                    ctx.save();
+                    ctx.translate(this.x, this.y);
+                    drawShape(ctx, this.shape, this.size);
+                    ctx.restore();
+                } else if (this.type === 'powerup') {
+                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = '#ffd700';
                     ctx.beginPath();
-                    ctx.arc(obs.x, obs.y, obs.size / 2, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.stroke();
-                } else if (obs.shape === 'square') {
-                    ctx.fillRect(obs.x - obs.size / 2, obs.y - obs.size / 2, obs.size, obs.size);
-                    ctx.strokeRect(obs.x - obs.size / 2, obs.y - obs.size / 2, obs.size, obs.size);
-                } else if (obs.shape === 'triangle') {
-                    ctx.beginPath();
-                    ctx.moveTo(obs.x, obs.y - obs.size / 2);
-                    ctx.lineTo(obs.x - obs.size / 2, obs.y + obs.size / 2);
-                    ctx.lineTo(obs.x + obs.size / 2, obs.y + obs.size / 2);
+                    let spikes = 5,
+                        outerRadius = this.size / 2,
+                        innerRadius = outerRadius / 2;
+                    let rot = Math.PI / 2 * 3;
+                    let cx = this.x, cy = this.y;
+                    let step = Math.PI / spikes;
+                    ctx.moveTo(cx, cy - outerRadius);
+                    for (let i = 0; i < spikes; i++) {
+                        let x = cx + Math.cos(rot) * outerRadius;
+                        let y = cy + Math.sin(rot) * outerRadius;
+                        ctx.lineTo(x, y);
+                        rot += step;
+                        x = cx + Math.cos(rot) * innerRadius;
+                        y = cy + Math.sin(rot) * innerRadius;
+                        ctx.lineTo(x, y);
+                        rot += step;
+                    }
                     ctx.closePath();
                     ctx.fill();
-                    ctx.stroke();
                 }
-            } else if (obs.type === 'powerup') {
                 ctx.shadowBlur = 0;
-                ctx.fillStyle = '#ffd700';
+            }
+        }
+
+        class Particle {
+            constructor(x, y, vx, vy, size, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.alpha = 1;
+                this.size = size;
+                this.color = color;
+            }
+            update(dt) {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= 0.02 * dt * 60;
+            }
+            draw(ctx) {
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
                 ctx.beginPath();
-                let spikes = 5,
-                    outerRadius = obs.size / 2,
-                    innerRadius = outerRadius / 2;
-                let rot = Math.PI / 2 * 3;
-                let cx = obs.x,
-                    cy = obs.y;
-                let step = Math.PI / spikes;
-                ctx.moveTo(cx, cy - outerRadius);
-                for (let i = 0; i < spikes; i++) {
-                    let x = cx + Math.cos(rot) * outerRadius;
-                    let y = cy + Math.sin(rot) * outerRadius;
-                    ctx.lineTo(x, y);
-                    rot += step;
-                    x = cx + Math.cos(rot) * innerRadius;
-                    y = cy + Math.sin(rot) * innerRadius;
-                    ctx.lineTo(x, y);
-                    rot += step;
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        class Star {
+            constructor(x, y, size, speed) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.speed = speed;
+            }
+            update() {
+                this.y += this.speed;
+                if (this.y > GAME_HEIGHT) {
+                    this.y = 0;
+                    this.x = Math.random() * GAME_WIDTH;
                 }
-                ctx.closePath();
-                ctx.fill();
             }
-            ctx.shadowBlur = 0;
-        }
-
-        function drawParticles() {
-            particles.forEach(p => {
-                ctx.globalAlpha = p.alpha;
-                ctx.fillStyle = p.color;
+            draw(ctx) {
+                ctx.fillStyle = '#fff';
+                ctx.globalAlpha = 0.8;
                 ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
                 ctx.fill();
-            });
-            ctx.globalAlpha = 1;
-        }
-
-        function drawUI() {
-            ctx.shadowColor = "rgba(0,0,0,0.5)";
-            ctx.shadowBlur = 4;
-            ctx.fillStyle = '#fff';
-            ctx.font = '20px sans-serif';
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'top';
-            ctx.fillText('Score: ' + score, 10, 10);
-            ctx.fillText('High Score: ' + highScore, 10, 35);
-            ctx.shadowBlur = 0;
-            if (comboCount > 1) {
-                ctx.fillText('Combo x' + (comboCount + 1), 10, 60);
-            }
-            if (shieldActive) {
-                ctx.fillText('Shield: ' + Math.ceil(shieldTimer) + 's', GAME_WIDTH - 140, 10);
+                ctx.globalAlpha = 1;
             }
         }
 
-        // Main draw function.
-        function draw() {
-            if (!gameStarted) {
-                drawStartMenu();
-                return;
+        class Game {
+            constructor(canvas, ctx) {
+                this.canvas = canvas;
+                this.ctx = ctx;
+                this.state = GameStateEnum.START;
+                this.score = 0;
+                // Retrieve persistent high score from localStorage.
+                this.highScore = parseInt(localStorage.getItem('highScore')) || 0;
+                this.spawnTimer = 0;
+                this.comboCount = 0;
+                this.comboTimer = 0;
+                this.shieldActive = false;
+                this.shieldTimer = 0;
+                this.lastFrameTime = performance.now();
+                this.keys = { left: false, right: false };
+
+                this.player = new Player(this);
+                this.obstacles = [];
+                this.particles = [];
+                this.stars = [];
+                this.obstaclePool = [];
+                this.particlePool = [];
+
+                const starCount = 50;
+                for (let i = 0; i < starCount; i++) {
+                    this.stars.push(new Star(Math.random() * GAME_WIDTH, Math.random() * GAME_HEIGHT, Math.random() * 2 + 1, Math.random() * 0.5 + 0.2));
+                }
+                this.bindEvents();
             }
-            drawStars();
-            obstacles.forEach(obs => drawObstacle(obs));
-            drawPlayer();
-            drawParticles();
-            drawUI();
-            if (gameOver) {
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-                ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-                ctx.fillStyle = '#fff';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.font = '40px sans-serif';
-                ctx.fillText('Game Over!', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40);
-                ctx.font = '20px sans-serif';
-                let endMessage = score >= highScore ? "New High Score!" : "High Score: " + highScore;
-                ctx.fillText(endMessage, GAME_WIDTH / 2, GAME_HEIGHT / 2);
-                ctx.fillText('Press Space to Restart', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 40);
+            // --- Object Pooling Methods ---
+            getObstacle(x, y, size, type, shape) {
+                if (this.obstaclePool.length > 0) {
+                    let obs = this.obstaclePool.pop();
+                    obs.x = x;
+                    obs.y = y;
+                    obs.size = size;
+                    obs.type = type;
+                    obs.shape = shape;
+                    return obs;
+                } else {
+                    return new Obstacle(x, y, size, type, shape);
+                }
             }
-            // Overlay pause message if paused.
-            if (paused && gameStarted) {
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-                ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-                ctx.fillStyle = '#fff';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.font = '40px sans-serif';
-                ctx.fillText('Paused', GAME_WIDTH / 2, GAME_HEIGHT / 2);
+            returnObstacle(obs) {
+                this.obstaclePool.push(obs);
+            }
+            getParticle(x, y, vx, vy, size, color) {
+                if (this.particlePool.length > 0) {
+                    let p = this.particlePool.pop();
+                    p.x = x;
+                    p.y = y;
+                    p.vx = vx;
+                    p.vy = vy;
+                    p.size = size;
+                    p.color = color;
+                    p.alpha = 1;
+                    return p;
+                } else {
+                    return new Particle(x, y, vx, vy, size, color);
+                }
+            }
+            returnParticle(p) {
+                this.particlePool.push(p);
+            }
+            bindEvents() {
+                document.addEventListener('keydown', (e) => {
+                    if (e.code === 'Escape') {
+                        if (this.state === GameStateEnum.PLAYING) {
+                            this.state = GameStateEnum.PAUSED;
+                        } else if (this.state === GameStateEnum.PAUSED) {
+                            this.state = GameStateEnum.PLAYING;
+                            this.lastFrameTime = performance.now();
+                            requestAnimationFrame((time) => this.gameLoop(time));
+                        }
+                        return;
+                    }
+                    if (this.state === GameStateEnum.PAUSED && e.code === 'Space') {
+                        this.state = GameStateEnum.PLAYING;
+                        this.lastFrameTime = performance.now();
+                        requestAnimationFrame((time) => this.gameLoop(time));
+                        return;
+                    }
+                    if (this.state === GameStateEnum.START && e.code === 'Space') {
+                        this.state = GameStateEnum.PLAYING;
+                        this.lastFrameTime = performance.now();
+                        requestAnimationFrame((time) => this.gameLoop(time));
+                        return;
+                    }
+                    if (this.state === GameStateEnum.GAMEOVER && e.code === 'Space') {
+                        this.restart();
+                        return;
+                    }
+                    if (this.state === GameStateEnum.PLAYING) {
+                        if (e.key === 'ArrowLeft') {
+                            this.keys.left = true;
+                            this.player.lastDirection = -1;
+                        }
+                        if (e.key === 'ArrowRight') {
+                            this.keys.right = true;
+                            this.player.lastDirection = 1;
+                        }
+                        if (e.key === '1' && this.player.shape !== 'circle') {
+                            this.player.shape = 'circle';
+                            this.player.morphScale = 1.5;
+                        }
+                        if (e.key === '2' && this.player.shape !== 'square') {
+                            this.player.shape = 'square';
+                            this.player.morphScale = 1.5;
+                        }
+                        if (e.key === '3' && this.player.shape !== 'triangle') {
+                            this.player.shape = 'triangle';
+                            this.player.morphScale = 1.5;
+                        }
+                        if (e.code === 'Space') {
+                            if (!this.player.isDashing) {
+                                if (this.keys.left) {
+                                    this.player.dashDirection = -1;
+                                } else if (this.keys.right) {
+                                    this.player.dashDirection = 1;
+                                } else {
+                                    this.player.dashDirection = this.player.lastDirection;
+                                }
+                                this.player.isDashing = true;
+                                this.player.dashTime = DASH_DURATION;
+                                this.createParticles(this.player.x, this.player.y, '#ffffff', 10);
+                            }
+                            e.preventDefault();
+                        }
+                    }
+                });
+                document.addEventListener('keyup', (e) => {
+                    if (e.key === 'ArrowLeft') this.keys.left = false;
+                    if (e.key === 'ArrowRight') this.keys.right = false;
+                });
+            }
+            restart() {
+                this.state = GameStateEnum.PLAYING;
+                this.score = 0;
+                this.spawnTimer = 0;
+                this.comboCount = 0;
+                this.comboTimer = 0;
+                this.shieldActive = false;
+                this.shieldTimer = 0;
+                // Return all current obstacles and particles to their pools.
+                this.obstacles.forEach(obs => this.returnObstacle(obs));
+                this.particles.forEach(p => this.returnParticle(p));
+                this.obstacles = [];
+                this.particles = [];
+                this.player = new Player(this);
+                this.lastFrameTime = performance.now();
+                requestAnimationFrame((time) => this.gameLoop(time));
+            }
+            // --- Difficulty Functions ---
+            getObstacleSpeed() {
+                if (this.score < 5000) {
+                    return 150 + (this.score / 5000) * 200;
+                } else if (this.score < 15000) {
+                    return 350 + ((this.score - 5000) / 10000) * 150;
+                } else {
+                    return 500 + ((this.score - 15000) / 10000) * 100;
+                }
+            }
+            getSpawnInterval() {
+                if (this.score < 5000) {
+                    return 1.0 - (this.score / 5000) * 0.1;
+                } else if (this.score < 15000) {
+                    return 0.9 - ((this.score - 5000) / 10000) * 0.2;
+                } else {
+                    return Math.max(0.5, 0.7 - ((this.score - 15000) / 10000) * 0.2);
+                }
+            }
+            createParticles(x, y, color, amount = 15) {
+                for (let i = 0; i < amount; i++) {
+                    let p = this.getParticle(
+                        x,
+                        y,
+                        (Math.random() - 0.5) * 3,
+                        (Math.random() - 0.5) * 3,
+                        Math.random() * 3 + 2,
+                        color
+                    );
+                    this.particles.push(p);
+                }
+            }
+            update(dt) {
+                if (this.state !== GameStateEnum.PLAYING) return;
+                this.player.update(dt, this.keys);
+                let obstacleSpeed = this.getObstacleSpeed();
+                // Update obstacles.
+                for (let i = this.obstacles.length - 1; i >= 0; i--) {
+                    let obs = this.obstacles[i];
+                    obs.update(dt, obstacleSpeed);
+                    if (obs.y - obs.size / 2 > GAME_HEIGHT) {
+                        this.returnObstacle(obs);
+                        this.obstacles.splice(i, 1);
+                    }
+                }
+                // Collision detection.
+                this.obstacles.forEach((obs) => {
+                    if (this.isColliding(this.player, obs)) {
+                        if (obs.type === 'normal') {
+                            if (this.player.shape === obs.shape) {
+                                this.score += 10 * (1 + this.comboCount);
+                                this.comboCount++;
+                                this.comboTimer = 0;
+                                this.createParticles(obs.x, obs.y, '#00ff00', 10);
+                                obs.y = GAME_HEIGHT + 100;
+                            } else {
+                                if (this.shieldActive) {
+                                    this.shieldActive = false;
+                                    this.shieldTimer = 0;
+                                    this.createParticles(obs.x, obs.y, '#ffff00', 10);
+                                    obs.y = GAME_HEIGHT + 100;
+                                } else {
+                                    this.state = GameStateEnum.GAMEOVER;
+                                    if (this.score > this.highScore) {
+                                        this.highScore = this.score;
+                                        // Save new high score to localStorage.
+                                        localStorage.setItem('highScore', this.highScore);
+                                    }
+                                }
+                            }
+                        } else if (obs.type === 'powerup') {
+                            this.shieldActive = true;
+                            this.shieldTimer = SHIELD_DURATION;
+                            this.createParticles(obs.x, obs.y, '#00ffff', 15);
+                            obs.y = GAME_HEIGHT + 100;
+                        }
+                    }
+                });
+                this.comboTimer += dt;
+                if (this.comboTimer > COMBO_RESET_TIME) {
+                    this.comboCount = 0;
+                    this.comboTimer = 0;
+                }
+                if (this.shieldActive) {
+                    this.shieldTimer -= dt;
+                    if (this.shieldTimer <= 0) this.shieldActive = false;
+                }
+                this.spawnTimer += dt;
+                if (this.spawnTimer > this.getSpawnInterval()) {
+                    this.spawnObstacle();
+                    this.spawnTimer = 0;
+                }
+                // Update particles.
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    let p = this.particles[i];
+                    p.update(dt);
+                    if (p.alpha <= 0) {
+                        this.returnParticle(p);
+                        this.particles.splice(i, 1);
+                    }
+                }
+                this.stars.forEach(s => s.update());
+            }
+            spawnObstacle() {
+                const size = 40;
+                const x = Math.random() * (GAME_WIDTH - size) + size / 2;
+                const y = -size / 2;
+                if (Math.random() < 0.1) {
+                    this.obstacles.push(this.getObstacle(x, y, 30, 'powerup', 'star'));
+                } else {
+                    const shapes = ['circle', 'square', 'triangle'];
+                    const shape = shapes[Math.floor(Math.random() * shapes.length)];
+                    this.obstacles.push(this.getObstacle(x, y, size, 'normal', shape));
+                }
+            }
+            isColliding(a, b) {
+                const dx = a.x - b.x;
+                const dy = a.y - b.y;
+                const distanceSq = dx * dx + dy * dy;
+                const minDist = (a.size / 2 + b.size / 2 + 3);
+                return distanceSq <= (minDist * minDist);
+            }
+            draw() {
+                if (this.state === GameStateEnum.START) {
+                    this.drawStartMenu();
+                    return;
+                }
+                // Draw background with starfield.
+                const grad = this.ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
+                grad.addColorStop(0, '#111');
+                grad.addColorStop(1, '#222');
+                this.ctx.fillStyle = grad;
+                this.ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+                this.stars.forEach(s => s.draw(this.ctx));
+                this.obstacles.forEach(obs => obs.draw(this.ctx));
+                this.player.draw(this.ctx, this.shieldActive);
+                this.particles.forEach(p => p.draw(this.ctx));
+                this.drawUI();
+                if (this.state === GameStateEnum.GAMEOVER) this.drawGameOver();
+                if (this.state === GameStateEnum.PAUSED) this.drawPause();
+            }
+            drawStartMenu() {
+                const grad = this.ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
+                grad.addColorStop(0, '#111');
+                grad.addColorStop(1, '#222');
+                this.ctx.fillStyle = grad;
+                this.ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+                this.ctx.fillStyle = '#fff';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.font = '40px sans-serif';
+                this.ctx.fillText('Shape Escape 2.0', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 60);
+                this.ctx.font = '20px sans-serif';
+                this.ctx.fillText('Press Space to Start', GAME_WIDTH / 2, GAME_HEIGHT / 2);
+            }
+            drawGameOver() {
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                this.ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+                this.ctx.fillStyle = '#fff';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.font = '40px sans-serif';
+                this.ctx.fillText('Game Over!', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40);
+                this.ctx.font = '20px sans-serif';
+                let endMessage = this.score >= this.highScore ? "New High Score!" : "High Score: " + this.highScore;
+                this.ctx.fillText(endMessage, GAME_WIDTH / 2, GAME_HEIGHT / 2);
+                this.ctx.fillText('Press Space to Restart', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 40);
+            }
+            drawPause() {
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                this.ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+                this.ctx.fillStyle = '#fff';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.font = '40px sans-serif';
+                this.ctx.fillText('Paused', GAME_WIDTH / 2, GAME_HEIGHT / 2);
+            }
+            drawUI() {
+                this.ctx.shadowColor = "rgba(0,0,0,0.5)";
+                this.ctx.shadowBlur = 4;
+                this.ctx.fillStyle = '#fff';
+                this.ctx.font = '20px sans-serif';
+                this.ctx.textAlign = 'left';
+                this.ctx.textBaseline = 'top';
+                this.ctx.fillText('Score: ' + this.score, 10, 10);
+                this.ctx.fillText('High Score: ' + this.highScore, 10, 35);
+                this.ctx.shadowBlur = 0;
+                if (this.comboCount > 1) {
+                    this.ctx.fillText('Combo x' + (this.comboCount + 1), 10, 60);
+                }
+                if (this.shieldActive) {
+                    this.ctx.fillText('Shield: ' + Math.ceil(this.shieldTimer) + 's', GAME_WIDTH - 140, 10);
+                }
+            }
+            gameLoop(currentTime) {
+                // Cap dt to avoid huge jumps.
+                let dt = (currentTime - this.lastFrameTime) / 1000;
+                dt = Math.min(dt, MAX_DT);
+                this.lastFrameTime = currentTime;
+                this.update(dt);
+                this.draw();
+                if (this.state !== GameStateEnum.GAMEOVER) {
+                    requestAnimationFrame((time) => this.gameLoop(time));
+                } else {
+                    this.draw();
+                }
             }
         }
 
-        // --- Main Game Loop ---
-        let lastFrameTime = performance.now();
-        function gameLoop(currentTime) {
-            if (paused) {
-                draw();
-                requestAnimationFrame(gameLoop);
-                return;
-            }
-            const dt = (currentTime - lastFrameTime) / 1000;
-            lastFrameTime = currentTime;
-            update(dt);
-            draw();
-            if (!gameOver) requestAnimationFrame(gameLoop);
-            else draw();
-        }
+        // --- Canvas Setup ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = GAME_WIDTH * dpr;
+        canvas.height = GAME_HEIGHT * dpr;
+        canvas.style.width = GAME_WIDTH + "px";
+        canvas.style.height = GAME_HEIGHT + "px";
+        ctx.scale(dpr, dpr);
 
-        // Initially show the start menu.
-        drawStartMenu();
+        // --- Initialize and Start Game ---
+        const game = new Game(canvas, ctx);
+        game.drawStartMenu();
     </script>
 </body>
 
