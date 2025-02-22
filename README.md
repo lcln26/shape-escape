@@ -24,7 +24,7 @@ Shape Escape is a fast-paced, minimalist arcade game built with HTML and JavaScr
 - **Pause**
   - Press **Escape** to pause or resume the game.
 - **Restart:**  
-  - When you lose, press the **space bar** or click the restart button to play again.
+  - When you lose, press the **space bar** to play again.
 - **Objective:**  
   - Morph into the correct shape to match incoming obstacles.
   - Build combo multipliers by rapidly matching shapes.

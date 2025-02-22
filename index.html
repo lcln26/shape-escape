@@ -76,8 +76,7 @@
             GAMEOVER: "gameover"
         };
 
-        // --- Helper Functions ---
-        // Draws a shape (circle, square, triangle) at the origin using the given size.
+        // --- Helper Functions for Drawing ---
         function drawShape(ctx, shape, size) {
             const half = size / 2;
             ctx.beginPath();
@@ -90,12 +89,31 @@
                 ctx.lineTo(-half, half);
                 ctx.lineTo(half, half);
                 ctx.closePath();
+            } else if (shape === 'star') {
+                // For "star", use a simple 5-pointed star drawing.
+                let spikes = 5;
+                let outerRadius = half;
+                let innerRadius = outerRadius / 2;
+                let rot = Math.PI / 2 * 3;
+                let x = 0, y = 0;
+                ctx.moveTo(x, y - outerRadius);
+                let step = Math.PI / spikes;
+                for (let i = 0; i < spikes; i++) {
+                    x = Math.cos(rot) * outerRadius;
+                    y = Math.sin(rot) * outerRadius;
+                    ctx.lineTo(x, y);
+                    rot += step;
+                    x = Math.cos(rot) * innerRadius;
+                    y = Math.sin(rot) * innerRadius;
+                    ctx.lineTo(x, y);
+                    rot += step;
+                }
+                ctx.closePath();
             }
             ctx.fill();
             ctx.stroke();
         }
 
-        // Draws a shield outline around a shape.
         function drawShield(ctx, shape, size, offset) {
             const half = size / 2;
             ctx.lineWidth = 4;
@@ -488,9 +506,9 @@
                         this.obstacles.splice(i, 1);
                     }
                 }
-                // Collision detection.
+                // --- Refined Collision Detection ---
                 this.obstacles.forEach((obs) => {
-                    if (this.isColliding(this.player, obs)) {
+                    if (refinedCollisionDetection(this.player, obs)) {
                         if (obs.type === 'normal') {
                             if (this.player.shape === obs.shape) {
                                 this.score += 10 * (1 + this.comboCount);
@@ -508,7 +526,6 @@
                                     this.state = GameStateEnum.GAMEOVER;
                                     if (this.score > this.highScore) {
                                         this.highScore = this.score;
-                                        // Save new high score to localStorage.
                                         localStorage.setItem('highScore', this.highScore);
                                     }
                                 }
@@ -557,13 +574,6 @@
                     const shape = shapes[Math.floor(Math.random() * shapes.length)];
                     this.obstacles.push(this.getObstacle(x, y, size, 'normal', shape));
                 }
-            }
-            isColliding(a, b) {
-                const dx = a.x - b.x;
-                const dy = a.y - b.y;
-                const distanceSq = dx * dx + dy * dy;
-                const minDist = (a.size / 2 + b.size / 2 + 3);
-                return distanceSq <= (minDist * minDist);
             }
             draw() {
                 if (this.state === GameStateEnum.START) {
@@ -638,7 +648,6 @@
                 }
             }
             gameLoop(currentTime) {
-                // Cap dt to avoid huge jumps.
                 let dt = (currentTime - this.lastFrameTime) / 1000;
                 dt = Math.min(dt, MAX_DT);
                 this.lastFrameTime = currentTime;
@@ -650,6 +659,133 @@
                     this.draw();
                 }
             }
+        }
+
+        // --- Refined Collision Detection Functions ---
+
+        // Get vertices for polygons (square or triangle).
+        // Only square and triangle are treated as polygons.
+        function getVertices(entity) {
+            let vertices = [];
+            const x = entity.x, y = entity.y, size = entity.size;
+            if (entity.shape === 'square') {
+                let half = size / 2;
+                vertices.push({ x: x - half, y: y - half });
+                vertices.push({ x: x + half, y: y - half });
+                vertices.push({ x: x + half, y: y + half });
+                vertices.push({ x: x - half, y: y + half });
+            } else if (entity.shape === 'triangle') {
+                let half = size / 2;
+                vertices.push({ x: x, y: y - half });
+                vertices.push({ x: x - half, y: y + half });
+                vertices.push({ x: x + half, y: y + half });
+            }
+            return vertices;
+        }
+
+        // Project a polygon onto an axis.
+        function projectPolygon(axis, poly) {
+            let min = poly[0].x * axis.x + poly[0].y * axis.y;
+            let max = min;
+            for (let i = 1; i < poly.length; i++) {
+                const proj = poly[i].x * axis.x + poly[i].y * axis.y;
+                if (proj < min) min = proj;
+                if (proj > max) max = proj;
+            }
+            return { min, max };
+        }
+
+        // SAT test for collision between two convex polygons.
+        function polygonCollision(polyA, polyB) {
+            const polygons = [polyA, polyB];
+            for (let i = 0; i < polygons.length; i++) {
+                const polygon = polygons[i];
+                for (let j = 0; j < polygon.length; j++) {
+                    const p1 = polygon[j];
+                    const p2 = polygon[(j + 1) % polygon.length];
+                    let axis = { x: -(p2.y - p1.y), y: p2.x - p1.x };
+                    const len = Math.sqrt(axis.x * axis.x + axis.y * axis.y);
+                    if (len === 0) continue;
+                    axis.x /= len;
+                    axis.y /= len;
+                    const projA = projectPolygon(axis, polyA);
+                    const projB = projectPolygon(axis, polyB);
+                    if (projA.max < projB.min || projB.max < projA.min) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        // Ray-casting algorithm to determine if a point is in a polygon.
+        function pointInPolygon(point, poly) {
+            let inside = false;
+            for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+                const xi = poly[i].x, yi = poly[i].y;
+                const xj = poly[j].x, yj = poly[j].y;
+                const intersect = ((yi > point.y) !== (yj > point.y)) &&
+                    (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        // Returns the closest point on the segment [a, b] from point.
+        function closestPointOnSegment(point, a, b) {
+            const ab = { x: b.x - a.x, y: b.y - a.y };
+            let t = ((point.x - a.x) * ab.x + (point.y - a.y) * ab.y) / (ab.x * ab.x + ab.y * ab.y);
+            t = Math.max(0, Math.min(1, t));
+            return { x: a.x + t * ab.x, y: a.y + t * ab.y };
+        }
+
+        // Circle vs. polygon collision detection.
+        function circlePolygonCollision(circle, poly) {
+            if (pointInPolygon({ x: circle.x, y: circle.y }, poly)) return true;
+            for (let i = 0; i < poly.length; i++) {
+                const a = poly[i];
+                const b = poly[(i + 1) % poly.length];
+                const closest = closestPointOnSegment({ x: circle.x, y: circle.y }, a, b);
+                const dx = circle.x - closest.x;
+                const dy = circle.y - closest.y;
+                if ((dx * dx + dy * dy) <= (circle.r * circle.r)) return true;
+            }
+            return false;
+        }
+
+        // Main refined collision detection function.
+        // Shapes not recognized as 'circle', 'square', or 'triangle' (e.g. 'star') are treated as circles.
+        function refinedCollisionDetection(a, b) {
+            const buffer = 3;
+            const validPolygonShapes = ['square', 'triangle'];
+            // Determine collision types for a and b.
+            const aIsCircle = (a.shape === 'circle') || !validPolygonShapes.includes(a.shape);
+            const bIsCircle = (b.shape === 'circle') || !validPolygonShapes.includes(b.shape);
+
+            // Both as circles.
+            if (aIsCircle && bIsCircle) {
+                const dx = a.x - b.x;
+                const dy = a.y - b.y;
+                const rA = a.size / 2;
+                const rB = b.size / 2;
+                return (dx * dx + dy * dy) <= ((rA + rB + buffer) * (rA + rB + buffer));
+            }
+            // a is circle, b is polygon.
+            if (aIsCircle && !bIsCircle) {
+                const circle = { x: a.x, y: a.y, r: a.size / 2 + buffer };
+                const poly = getVertices(b);
+                return circlePolygonCollision(circle, poly);
+            }
+            // b is circle, a is polygon.
+            if (bIsCircle && !aIsCircle) {
+                const circle = { x: b.x, y: b.y, r: b.size / 2 + buffer };
+                const poly = getVertices(a);
+                return circlePolygonCollision(circle, poly);
+            }
+            // Both are polygons.
+            const polyA = getVertices(a);
+            const polyB = getVertices(b);
+            return polygonCollision(polyA, polyB);
         }
 
         // --- Canvas Setup ---
