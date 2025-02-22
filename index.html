@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Shape Escape 2.0 - Refined Edition with Dash</title>
+    <title>Shape Escape 2.0 - Refined Edition with Dash & Scoring</title>
     <style>
         body {
             margin: 0;
@@ -48,6 +48,7 @@
         // Game state variables
         let gameOver = false;
         let score = 0;
+        let highScore = 0; // Remember highest score in current session
         let gameTime = 0; // frame count
         let spawnTimer = 0;
         const baseSpawnInterval = 90; // base frames between obstacle spawns
@@ -74,7 +75,7 @@
             isDashing: false,
             dashTime: 0,
             dashDuration: 15,   // frames the dash lasts
-            dashSpeed: 15,      // additional speed per frame during dash
+            dashSpeed: 15,      // extra speed per frame during dash
             dashDirection: 0,   // -1 for left, +1 for right
             lastDirection: 1    // remembers last horizontal direction; default right
         };
@@ -101,45 +102,49 @@
 
         // Input event listeners
         document.addEventListener('keydown', (e) => {
-            if (gameOver) return;
-            if (e.key === 'ArrowLeft') {
-                keys.left = true;
-                player.lastDirection = -1;
-            }
-            if (e.key === 'ArrowRight') {
-                keys.right = true;
-                player.lastDirection = 1;
-            }
-            if (e.key === '1' && player.shape !== 'circle') {
-                player.shape = 'circle';
-                player.morphScale = 1.5;
-            }
-            if (e.key === '2' && player.shape !== 'square') {
-                player.shape = 'square';
-                player.morphScale = 1.5;
-            }
-            if (e.key === '3' && player.shape !== 'triangle') {
-                player.shape = 'triangle';
-                player.morphScale = 1.5;
-            }
-            // Dash on Space bar press
-            if (e.code === 'Space') {
-                if (!player.isDashing) {
-                    // Determine dash direction: if arrow is pressed, use that; otherwise, use lastDirection.
-                    if (keys.left) {
-                        player.dashDirection = -1;
-                    } else if (keys.right) {
-                        player.dashDirection = 1;
-                    } else {
-                        player.dashDirection = player.lastDirection;
-                    }
-                    player.isDashing = true;
-                    player.dashTime = player.dashDuration;
-                    // Optionally, create a burst of particles when dashing.
-                    createParticles(player.x, player.y, '#ffffff', 10);
+            if (!gameOver) {
+                if (e.key === 'ArrowLeft') {
+                    keys.left = true;
+                    player.lastDirection = -1;
                 }
-                // Prevent default scrolling behavior.
-                e.preventDefault();
+                if (e.key === 'ArrowRight') {
+                    keys.right = true;
+                    player.lastDirection = 1;
+                }
+                if (e.key === '1' && player.shape !== 'circle') {
+                    player.shape = 'circle';
+                    player.morphScale = 1.5;
+                }
+                if (e.key === '2' && player.shape !== 'square') {
+                    player.shape = 'square';
+                    player.morphScale = 1.5;
+                }
+                if (e.key === '3' && player.shape !== 'triangle') {
+                    player.shape = 'triangle';
+                    player.morphScale = 1.5;
+                }
+                // Dash on Space bar press (only if not game over)
+                if (e.code === 'Space') {
+                    if (!player.isDashing) {
+                        if (keys.left) {
+                            player.dashDirection = -1;
+                        } else if (keys.right) {
+                            player.dashDirection = 1;
+                        } else {
+                            player.dashDirection = player.lastDirection;
+                        }
+                        player.isDashing = true;
+                        player.dashTime = player.dashDuration;
+                        createParticles(player.x, player.y, '#ffffff', 10);
+                    }
+                    // Prevent default scrolling behavior.
+                    e.preventDefault();
+                }
+            } else {
+                // When game over, allow restart with space bar
+                if (e.code === 'Space') {
+                    restartGame();
+                }
             }
         });
         document.addEventListener('keyup', (e) => {
@@ -147,7 +152,7 @@
             if (e.key === 'ArrowRight') keys.right = false;
         });
 
-        // Restart button functionality
+        // Restart button functionality (for clicking restart)
         const restartBtn = document.getElementById('restartBtn');
         restartBtn.addEventListener('click', restartGame);
         function restartGame() {
@@ -177,17 +182,14 @@
             return distance < (a.size / 2 + b.size / 2);
         }
 
-        // Spawn obstacles
-        // 90% chance to spawn a normal obstacle; 10% chance for a power-up.
+        // Spawn obstacles: 90% normal, 10% powerup.
         function spawnObstacle() {
             const size = 40;
             const x = Math.random() * (canvas.width - size) + size / 2;
             const y = -size / 2;
             if (Math.random() < 0.1) {
-                // Power-up: a shield power-up (drawn as a star)
                 obstacles.push({ x, y, size: 30, type: 'powerup', shape: 'star' });
             } else {
-                // Normal obstacle: randomly choose one of the three shapes
                 const shapes = ['circle', 'square', 'triangle'];
                 const shape = shapes[Math.floor(Math.random() * shapes.length)];
                 obstacles.push({ x, y, size, type: 'normal', shape });
@@ -237,7 +239,7 @@
             if (gameOver) return;
             gameTime++;
 
-            // Dash update: if dashing, override normal movement
+            // Handle dash movement
             if (player.isDashing) {
                 player.x += player.dashSpeed * player.dashDirection;
                 player.dashTime--;
@@ -245,7 +247,6 @@
                     player.isDashing = false;
                 }
             } else {
-                // Normal player movement
                 if (keys.left) {
                     player.x -= player.speed;
                 }
@@ -257,18 +258,18 @@
             if (player.x - player.size / 2 < 0) player.x = player.size / 2;
             if (player.x + player.size / 2 > canvas.width) player.x = canvas.width - player.size / 2;
 
-            // Gradually reduce morph scale back to 1 for smooth transition
+            // Reduce morph scale back to 1
             if (player.morphScale > 1) {
                 player.morphScale -= 0.05;
                 if (player.morphScale < 1) player.morphScale = 1;
             }
 
-            // Adjust obstacle speed: slower increase for better playability.
+            // Adjust obstacle speed (capped for playability)
             const obstacleSpeed = 2 + Math.min(score, 500) * 0.005;  // max around 4.5
             obstacles.forEach(obs => {
                 obs.y += obstacleSpeed;
             });
-            // Remove obstacles that have gone off-screen
+            // Remove obstacles off-screen
             for (let i = obstacles.length - 1; i >= 0; i--) {
                 if (obstacles[i].y - obstacles[i].size / 2 > canvas.height) {
                     obstacles.splice(i, 1);
@@ -279,11 +280,10 @@
             obstacles.forEach((obs) => {
                 if (isColliding(player, obs)) {
                     if (obs.type === 'normal') {
-                        // If shapes match, increase score and combo; otherwise, check shield
                         if (player.shape === obs.shape) {
                             score += 10 * (1 + comboCount);
                             comboCount++;
-                            comboTimer = 0; // reset combo timer
+                            comboTimer = 0;
                             createParticles(obs.x, obs.y, '#00ff00', 10);
                             obs.y = canvas.height + 100;
                         } else {
@@ -294,6 +294,10 @@
                                 obs.y = canvas.height + 100;
                             } else {
                                 gameOver = true;
+                                // Update high score if necessary
+                                if (score > highScore) {
+                                    highScore = score;
+                                }
                             }
                         }
                     } else if (obs.type === 'powerup') {
@@ -320,11 +324,10 @@
                 }
             }
 
-            // Update starfield and particles
             updateStars();
             updateParticles();
 
-            // Gradually adjust spawn interval (but do not let it drop too low)
+            // Adjust spawn interval gradually
             const currentSpawnInterval = Math.max(80, baseSpawnInterval - Math.floor(score / 400));
             spawnTimer++;
             if (spawnTimer > currentSpawnInterval) {
@@ -333,15 +336,13 @@
             }
         }
 
-        // Draw starfield background with a subtle gradient
+        // Draw starfield with gradient background
         function drawStars() {
-            // Create vertical gradient
             const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
             grad.addColorStop(0, '#111');
             grad.addColorStop(1, '#222');
             ctx.fillStyle = grad;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            // Draw stars with a soft glow
             stars.forEach(star => {
                 ctx.fillStyle = '#fff';
                 ctx.globalAlpha = 0.8;
@@ -352,7 +353,7 @@
             ctx.globalAlpha = 1;
         }
 
-        // Draw player with soft shadow and shield indicator
+        // Draw player with shadow and shield indicator
         function drawPlayer() {
             ctx.save();
             ctx.translate(player.x, player.y);
@@ -376,7 +377,6 @@
                 ctx.fill();
             }
             ctx.restore();
-            // Draw shield outline if active
             if (shieldActive) {
                 ctx.strokeStyle = '#00ffff';
                 ctx.lineWidth = 4;
@@ -386,7 +386,7 @@
             }
         }
 
-        // Draw obstacle with improved stroke and soft shadow
+        // Draw obstacles with soft shadows
         function drawObstacle(obs) {
             ctx.lineWidth = 3;
             ctx.shadowColor = "rgba(0, 0, 0, 0.3)";
@@ -444,16 +444,17 @@
             ctx.globalAlpha = 1;
         }
 
-        // Draw UI: score, combo multiplier, shield timer
+        // Draw UI: score, high score, combo multiplier, shield timer
         function drawUI() {
             ctx.shadowColor = "rgba(0,0,0,0.5)";
             ctx.shadowBlur = 4;
             ctx.fillStyle = '#fff';
             ctx.font = '20px sans-serif';
             ctx.fillText('Score: ' + score, 10, 30);
+            ctx.fillText('High Score: ' + highScore, 10, 55);
             ctx.shadowBlur = 0;
             if (comboCount > 1) {
-                ctx.fillText('Combo x' + (comboCount + 1), 10, 55);
+                ctx.fillText('Combo x' + (comboCount + 1), 10, 80);
             }
             if (shieldActive) {
                 ctx.fillText('Shield: ' + Math.ceil(shieldTimer / 60) + 's', canvas.width - 140, 30);
@@ -474,9 +475,11 @@
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = '#fff';
                 ctx.font = '40px sans-serif';
-                ctx.fillText('Game Over!', canvas.width / 2 - 100, canvas.height / 2);
+                ctx.fillText('Game Over!', canvas.width / 2 - 100, canvas.height / 2 - 20);
                 ctx.font = '20px sans-serif';
-                ctx.fillText('Press Restart to play again', canvas.width / 2 - 120, canvas.height / 2 + 40);
+                let endMessage = score >= highScore ? "New High Score!" : "High Score: " + highScore;
+                ctx.fillText(endMessage, canvas.width / 2 - 90, canvas.height / 2 + 20);
+                ctx.fillText('Press Space to Restart', canvas.width / 2 - 110, canvas.height / 2 + 50);
                 restartBtn.style.display = 'inline-block';
             }
         }
