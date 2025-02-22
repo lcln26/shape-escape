@@ -33,18 +33,18 @@ Shape Escape 2.0 is a fast-paced, minimalist arcade game built with HTML and Jav
 
 ## 💻 Getting Started
 1. Clone the repository:
-  git clone https://github.com/yourusername/shape-escape.git
+  git clone https://github.com/lcln26/shape-escape.git
 2. Navigate to the project directory:
   cd shape-escape
 3. Open **index.html** in your preferred web browser.
 
-## Technologies Used
+## 💾 Technologies Used
 - **HTML5 Canvas:** For rendering graphics.
 - **Vanilla JavaScript:** For core gameplay logic.
 - **CSS3:** For responsive styling.
 
-## Contributing
+## 🤝 Contributing
 Contributions are welcome! If you have ideas for improvements or new features, feel free to fork the repository and submit a pull request.
 
-## License
+## 🪪 License
 This project is licensed under the MIT License. See the **LICENSE** file for details.
