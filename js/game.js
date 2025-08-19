@@ -49,7 +49,7 @@ export class Game {
   }
 
   // Object pooling methods
-  getObstacle(x, y, size, type, shape) {
+  getObstacle(x, y, size, type, shape, vx = 0, rotationSpeed = 0) {
     if (this.obstaclePool.length > 0) {
       let obs = this.obstaclePool.pop();
       obs.x = x;
@@ -57,9 +57,12 @@ export class Game {
       obs.size = size;
       obs.type = type;
       obs.shape = shape;
+      obs.vx = vx;
+      obs.rotation = 0;
+      obs.rotationSpeed = rotationSpeed;
       return obs;
     } else {
-      return new Obstacle(x, y, size, type, shape);
+      return new Obstacle(x, y, size, type, shape, vx, rotationSpeed);
     }
   }
   returnObstacle(obs) {
