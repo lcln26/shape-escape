@@ -1,15 +1,20 @@
 import { drawShape } from "./utils.js";
 
 export class Obstacle {
-  constructor(x, y, size, type, shape) {
+  constructor(x, y, size, type, shape, vx = 0, rotationSpeed = 0) {
     this.x = x;
     this.y = y;
     this.size = size;
     this.type = type; // 'normal' or 'powerup'
     this.shape = shape;
+    this.vx = vx;
+    this.rotation = 0;
+    this.rotationSpeed = rotationSpeed;
   }
   update(dt, speed) {
+    this.x += this.vx * dt;
     this.y += speed * dt;
+    this.rotation += this.rotationSpeed * dt;
   }
   draw(ctx) {
     ctx.lineWidth = 3;
@@ -20,17 +25,21 @@ export class Obstacle {
       ctx.strokeStyle = '#fff';
       ctx.save();
       ctx.translate(this.x, this.y);
+      ctx.rotate(this.rotation);
       drawShape(ctx, this.shape, this.size);
       ctx.restore();
     } else if (this.type === 'powerup') {
       ctx.shadowBlur = 0;
       ctx.fillStyle = '#ffd700';
+      ctx.save();
+      ctx.translate(this.x, this.y);
+      ctx.rotate(this.rotation);
       ctx.beginPath();
       let spikes = 5,
           outerRadius = this.size / 2,
           innerRadius = outerRadius / 2;
       let rot = Math.PI / 2 * 3;
-      const cx = this.x, cy = this.y;
+      const cx = 0, cy = 0;
       const step = Math.PI / spikes;
       ctx.moveTo(cx, cy - outerRadius);
       for (let i = 0; i < spikes; i++) {
@@ -45,6 +54,7 @@ export class Obstacle {
       }
       ctx.closePath();
       ctx.fill();
+      ctx.restore();
     }
     ctx.shadowBlur = 0;
   }
