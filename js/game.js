@@ -16,10 +16,19 @@ export class Game {
     this.spawnTimer = 0;
     this.comboCount = 0;
     this.comboTimer = 0;
+    this.comboTier = 0;
+    this.comboTextScale = 1;
     this.shieldActive = false;
     this.shieldTimer = 0;
     this.lastFrameTime = performance.now();
     this.keys = { left: false, right: false };
+
+    // Simple audio context for combo sounds
+    try {
+      this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (e) {
+      this.audioCtx = null;
+    }
 
     this.player = new Player(this);
     this.obstacles = [];
@@ -79,6 +88,9 @@ export class Game {
 
   bindEvents() {
     document.addEventListener('keydown', (e) => {
+      if (this.audioCtx && this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume();
+      }
       if (e.code === 'Escape') {
         if (this.state === GameStateEnum.PLAYING) {
           this.state = GameStateEnum.PAUSED;
@@ -155,6 +167,8 @@ export class Game {
     this.spawnTimer = 0;
     this.comboCount = 0;
     this.comboTimer = 0;
+    this.comboTier = 0;
+    this.comboTextScale = 1;
     this.shieldActive = false;
     this.shieldTimer = 0;
     // Return obstacles and particles to their pools.
@@ -198,6 +212,44 @@ export class Game {
       this.particles.push(p);
     }
   }
+
+  getComboTier(count) {
+    if (count >= 20) return 4;
+    if (count >= 10) return 3;
+    if (count >= 5) return 2;
+    if (count >= 3) return 1;
+    return 0;
+  }
+
+  getComboMultiplier(count) {
+    if (count >= 20) return 8;
+    if (count >= 15) return 5;
+    if (count >= 10) return 3;
+    if (count >= 5) return 2;
+    return 1 + count;
+  }
+
+  playComboSound(tier) {
+    if (!this.audioCtx) return;
+    const freqs = [440, 660, 880, 1100];
+    const osc = this.audioCtx.createOscillator();
+    const gain = this.audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freqs[Math.min(tier - 1, freqs.length - 1)];
+    gain.gain.value = 0.1;
+    osc.connect(gain);
+    gain.connect(this.audioCtx.destination);
+    osc.start();
+    osc.stop(this.audioCtx.currentTime + 0.2);
+  }
+
+  createComboTierEffect(tier, x, y) {
+    const colors = ['#00ff00', '#00ffff', '#ff00ff', '#ffff00'];
+    const color = colors[Math.min(tier - 1, colors.length - 1)];
+    this.createParticles(x, y, color, 20 + tier * 5);
+    this.playComboSound(tier);
+  }
+
   update(dt) {
     if (this.state !== GameStateEnum.PLAYING) return;
     this.player.update(dt, this.keys);
@@ -214,10 +266,18 @@ export class Game {
       if (refinedCollisionDetection(this.player, obs)) {
         if (obs.type === 'normal') {
           if (this.player.shape === obs.shape) {
-            this.score += 10 * (1 + this.comboCount);
+            const prevTier = this.getComboTier(this.comboCount);
             this.comboCount++;
             this.comboTimer = 0;
+            const tier = this.getComboTier(this.comboCount);
+            const multiplier = this.getComboMultiplier(this.comboCount);
+            this.score += 10 * multiplier;
+            this.comboTextScale = 1.5;
             this.createParticles(obs.x, obs.y, '#00ff00', 10);
+            if (tier > prevTier) {
+              this.comboTier = tier;
+              this.createComboTierEffect(tier, obs.x, obs.y);
+            }
             obs.y = GAME_HEIGHT + 100;
           } else {
             if (this.shieldActive) {
@@ -245,6 +305,11 @@ export class Game {
     if (this.comboTimer > COMBO_RESET_TIME) {
       this.comboCount = 0;
       this.comboTimer = 0;
+      this.comboTier = 0;
+    }
+    if (this.comboTextScale > 1) {
+      this.comboTextScale -= dt * 2;
+      if (this.comboTextScale < 1) this.comboTextScale = 1;
     }
     if (this.shieldActive) {
       this.shieldTimer -= dt;
@@ -342,8 +407,23 @@ export class Game {
     this.ctx.fillText('Score: ' + this.score, 10, 10);
     this.ctx.fillText('High Score: ' + this.highScore, 10, 35);
     this.ctx.shadowBlur = 0;
-    if (this.comboCount > 1) {
-      this.ctx.fillText('Combo x' + (this.comboCount + 1), 10, 60);
+    if (this.comboCount > 0) {
+      const multiplier = this.getComboMultiplier(this.comboCount);
+      this.ctx.save();
+      this.ctx.translate(10, 60);
+      this.ctx.scale(this.comboTextScale, this.comboTextScale);
+      this.ctx.fillText('Combo x' + multiplier, 0, 0);
+      this.ctx.restore();
+
+      const barWidth = 120;
+      const barHeight = 10;
+      const progress = 1 - this.comboTimer / COMBO_RESET_TIME;
+      const tierColors = ['#0f0', '#0ff', '#f0f', '#ff0'];
+      const color = tierColors[Math.min(this.comboTier - 1, tierColors.length - 1)] || '#0f0';
+      this.ctx.strokeStyle = '#fff';
+      this.ctx.strokeRect(10, 80, barWidth, barHeight);
+      this.ctx.fillStyle = color;
+      this.ctx.fillRect(10, 80, barWidth * progress, barHeight);
     }
     if (this.shieldActive) {
       this.ctx.fillText('Shield: ' + Math.ceil(this.shieldTimer) + 's', GAME_WIDTH - 140, 10);
