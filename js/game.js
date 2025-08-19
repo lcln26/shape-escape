@@ -1,7 +1,7 @@
 import { GAME_WIDTH, GAME_HEIGHT, MAX_DT, COMBO_RESET_TIME, SHIELD_DURATION, GameStateEnum, BASE_SPAWN_INTERVAL, DASH_DURATION } from "./config.js";
 import { refinedCollisionDetection } from "./utils.js";
 import { Player } from "./player.js";
-import { Obstacle } from "./obstacle.js";
+import { Obstacle, ObstaclePreview } from "./obstacle.js";
 import { Particle } from "./particle.js";
 import { Star } from "./star.js";
 
@@ -23,6 +23,7 @@ export class Game {
 
     this.player = new Player(this);
     this.obstacles = [];
+    this.obstaclePreviews = [];
     this.particles = [];
     this.stars = [];
     this.obstaclePool = [];
@@ -161,6 +162,7 @@ export class Game {
     this.obstacles.forEach(obs => this.returnObstacle(obs));
     this.particles.forEach(p => this.returnParticle(p));
     this.obstacles = [];
+    this.obstaclePreviews = [];
     this.particles = [];
     this.player = new Player(this);
     this.lastFrameTime = performance.now();
@@ -202,6 +204,13 @@ export class Game {
     if (this.state !== GameStateEnum.PLAYING) return;
     this.player.update(dt, this.keys);
     const obstacleSpeed = this.getObstacleSpeed();
+    for (let i = this.obstaclePreviews.length - 1; i >= 0; i--) {
+      let prev = this.obstaclePreviews[i];
+      if (prev.update(dt)) {
+        this.obstacles.push(this.getObstacle(prev.x, prev.y, prev.size, prev.type, prev.shape));
+        this.obstaclePreviews.splice(i, 1);
+      }
+    }
     for (let i = this.obstacles.length - 1; i >= 0; i--) {
       let obs = this.obstacles[i];
       obs.update(dt, obstacleSpeed);
@@ -268,13 +277,13 @@ export class Game {
   spawnObstacle() {
     const size = 40;
     const x = Math.random() * (GAME_WIDTH - size) + size / 2;
-    const y = -size / 2;
+    const y = size / 2;
     if (Math.random() < 0.1) {
-      this.obstacles.push(this.getObstacle(x, y, 30, 'powerup', 'star'));
+      this.obstaclePreviews.push(new ObstaclePreview(x, y, 30, 'powerup', 'star'));
     } else {
       const shapes = ['circle', 'square', 'triangle'];
       const shape = shapes[Math.floor(Math.random() * shapes.length)];
-      this.obstacles.push(this.getObstacle(x, y, size, 'normal', shape));
+      this.obstaclePreviews.push(new ObstaclePreview(x, y, size, 'normal', shape));
     }
   }
   draw() {
@@ -289,6 +298,7 @@ export class Game {
     this.ctx.fillStyle = grad;
     this.ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     this.stars.forEach(s => s.draw(this.ctx));
+    this.obstaclePreviews.forEach(p => p.draw(this.ctx));
     this.obstacles.forEach(obs => obs.draw(this.ctx));
     this.player.draw(this.ctx, this.shieldActive);
     this.particles.forEach(p => p.draw(this.ctx));
