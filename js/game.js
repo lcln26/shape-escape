@@ -4,6 +4,7 @@ import { Player } from "./player.js";
 import { Obstacle } from "./obstacle.js";
 import { Particle } from "./particle.js";
 import { Star } from "./star.js";
+import { achievements } from "./achievements.js";
 
 
 export class Game {
@@ -20,6 +21,11 @@ export class Game {
     this.shieldTimer = 0;
     this.lastFrameTime = performance.now();
     this.keys = { left: false, right: false };
+
+    this.runTime = 0;
+    this.shieldsCollected = 0;
+    this.achievements = achievements;
+    this.achievementState = JSON.parse(localStorage.getItem('achievements')) || {};
 
     this.player = new Player(this);
     this.obstacles = [];
@@ -157,6 +163,8 @@ export class Game {
     this.comboTimer = 0;
     this.shieldActive = false;
     this.shieldTimer = 0;
+    this.runTime = 0;
+    this.shieldsCollected = 0;
     // Return obstacles and particles to their pools.
     this.obstacles.forEach(obs => this.returnObstacle(obs));
     this.particles.forEach(p => this.returnParticle(p));
@@ -200,6 +208,7 @@ export class Game {
   }
   update(dt) {
     if (this.state !== GameStateEnum.PLAYING) return;
+    this.runTime += dt;
     this.player.update(dt, this.keys);
     const obstacleSpeed = this.getObstacleSpeed();
     for (let i = this.obstacles.length - 1; i >= 0; i--) {
@@ -234,6 +243,7 @@ export class Game {
             }
           }
         } else if (obs.type === 'powerup') {
+          this.shieldsCollected++;
           this.shieldActive = true;
           this.shieldTimer = SHIELD_DURATION;
           this.createParticles(obs.x, obs.y, '#00ffff', 15);
@@ -264,7 +274,23 @@ export class Game {
       }
     }
     this.stars.forEach(s => s.update());
+    this.checkAchievements();
   }
+
+  checkAchievements() {
+    this.achievements.forEach(ach => {
+      if (this.achievementState[ach.id]) return;
+      if (ach.condition(this)) {
+        this.unlockAchievement(ach.id);
+      }
+    });
+  }
+
+  unlockAchievement(id) {
+    this.achievementState[id] = true;
+    localStorage.setItem('achievements', JSON.stringify(this.achievementState));
+  }
+
   spawnObstacle() {
     const size = 40;
     const x = Math.random() * (GAME_WIDTH - size) + size / 2;
@@ -322,6 +348,13 @@ export class Game {
     let endMessage = this.score >= this.highScore ? "New High Score!" : "High Score: " + this.highScore;
     this.ctx.fillText(endMessage, GAME_WIDTH / 2, GAME_HEIGHT / 2);
     this.ctx.fillText('Press Space to Restart', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 40);
+    const unlocked = this.achievements.filter(a => this.achievementState[a.id]);
+    if (unlocked.length > 0) {
+      this.ctx.fillText('Achievements:', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 80);
+      unlocked.forEach((a, i) => {
+        this.ctx.fillText(a.title, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 110 + i * 25);
+      });
+    }
   }
   drawPause() {
     this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
