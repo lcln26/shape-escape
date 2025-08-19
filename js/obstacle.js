@@ -49,3 +49,38 @@ export class Obstacle {
     ctx.shadowBlur = 0;
   }
 }
+
+export class ObstaclePreview {
+  constructor(x, y, size, type, shape) {
+    this.x = x;
+    this.y = y;
+    this.size = size;
+    this.type = type;
+    this.shape = shape;
+    this.timer = 0;
+    this.duration = 0.5;
+    this.alpha = 0;
+  }
+  update(dt) {
+    this.timer += dt;
+    this.alpha = Math.min(1, this.timer / this.duration);
+    return this.timer >= this.duration;
+  }
+  draw(ctx) {
+    ctx.save();
+    ctx.globalAlpha = 0.3 + 0.7 * this.alpha;
+    ctx.lineWidth = 3;
+    ctx.shadowBlur = 0;
+    const flash = Math.floor(Date.now() / 200) % 2 === 0;
+    if (this.type === 'powerup') {
+      ctx.fillStyle = '#ffd700';
+      ctx.strokeStyle = flash ? '#00ffff' : '#ffffff';
+    } else {
+      ctx.fillStyle = '#222';
+      ctx.strokeStyle = flash ? '#ff0000' : '#ffffff';
+    }
+    ctx.translate(this.x, this.y);
+    drawShape(ctx, this.shape, this.size);
+    ctx.restore();
+  }
+}
