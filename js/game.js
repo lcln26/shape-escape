@@ -35,6 +35,11 @@ export class Game {
     this.obstaclePool = [];
     this.particlePool = [];
 
+    // Cache background gradient to avoid re-creating it every frame.
+    this.backgroundGradient = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
+    this.backgroundGradient.addColorStop(0, '#111');
+    this.backgroundGradient.addColorStop(1, '#222');
+
     // Create starfield
     const starCount = 50;
     for (let i = 0; i < starCount; i++) {
@@ -318,10 +323,7 @@ export class Game {
       return;
     }
     // Draw background starfield.
-    const grad = this.ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
-    grad.addColorStop(0, '#111');
-    grad.addColorStop(1, '#222');
-    this.ctx.fillStyle = grad;
+    this.ctx.fillStyle = this.backgroundGradient;
     this.ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     this.stars.forEach(s => s.draw(this.ctx));
     this.obstaclePreviews.forEach(p => p.draw(this.ctx));
@@ -333,10 +335,7 @@ export class Game {
     if (this.state === GameStateEnum.PAUSED) this.drawPause();
   }
   drawStartMenu() {
-    const grad = this.ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
-    grad.addColorStop(0, '#111');
-    grad.addColorStop(1, '#222');
-    this.ctx.fillStyle = grad;
+    this.ctx.fillStyle = this.backgroundGradient;
     this.ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     this.ctx.fillStyle = '#fff';
     this.ctx.textAlign = 'center';

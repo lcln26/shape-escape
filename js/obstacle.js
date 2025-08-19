@@ -58,7 +58,7 @@ export class ObstaclePreview {
     this.type = type;
     this.shape = shape;
     this.timer = 0;
-    this.duration = 0.5;
+    this.duration = 1.0;
     this.alpha = 0;
   }
   update(dt) {
@@ -68,8 +68,8 @@ export class ObstaclePreview {
   }
   draw(ctx) {
     ctx.save();
-    ctx.globalAlpha = 0.3 + 0.7 * this.alpha;
-    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.5 + 0.5 * this.alpha;
+    ctx.lineWidth = 5;
     ctx.shadowBlur = 0;
     const flash = Math.floor(Date.now() / 200) % 2 === 0;
     if (this.type === 'powerup') {
@@ -80,7 +80,7 @@ export class ObstaclePreview {
       ctx.strokeStyle = flash ? '#ff0000' : '#ffffff';
     }
     ctx.translate(this.x, this.y);
-    drawShape(ctx, this.shape, this.size);
+    drawShape(ctx, this.shape, this.size * 1.1);
     ctx.restore();
   }
 }

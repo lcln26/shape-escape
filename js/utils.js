@@ -1,7 +1,19 @@
 import { GAME_WIDTH, GAME_HEIGHT } from "./config.js";
 
+// Scale factors to keep different shapes visually consistent.
+const SHAPE_SCALES = {
+  circle: 1.1,
+  square: 1.0,
+  triangle: 1.25,
+};
+
+function getScaledSize(size, shape) {
+  return size * (SHAPE_SCALES[shape] || 1);
+}
+
 // Draws a shape based on type.
 export function drawShape(ctx, shape, size) {
+  size = getScaledSize(size, shape);
   const half = size / 2;
   ctx.beginPath();
   if (shape === 'circle') {
@@ -35,6 +47,7 @@ export function drawShape(ctx, shape, size) {
 }
 
 export function drawShield(ctx, shape, size, offset) {
+  size = getScaledSize(size, shape);
   const half = size / 2;
   ctx.lineWidth = 4;
   ctx.strokeStyle = '#00ffff';
@@ -83,14 +96,15 @@ export function drawShield(ctx, shape, size, offset) {
 export function getVertices(entity) {
   let vertices = [];
   const { x, y, size, shape } = entity;
+  const scaled = getScaledSize(size, shape);
   if (shape === 'square') {
-    const half = size / 2;
+    const half = scaled / 2;
     vertices.push({ x: x - half, y: y - half });
     vertices.push({ x: x + half, y: y - half });
     vertices.push({ x: x + half, y: y + half });
     vertices.push({ x: x - half, y: y + half });
   } else if (shape === 'triangle') {
-    const half = size / 2;
+    const half = scaled / 2;
     vertices.push({ x: x, y: y - half });
     vertices.push({ x: x - half, y: y + half });
     vertices.push({ x: x + half, y: y + half });
@@ -168,24 +182,27 @@ export function refinedCollisionDetection(a, b) {
   const aIsCircle = (a.shape === 'circle') || !validPolygonShapes.includes(a.shape);
   const bIsCircle = (b.shape === 'circle') || !validPolygonShapes.includes(b.shape);
 
+  const sizeA = getScaledSize(a.size, a.shape);
+  const sizeB = getScaledSize(b.size, b.shape);
+
   if (aIsCircle && bIsCircle) {
     const dx = a.x - b.x;
     const dy = a.y - b.y;
-    const rA = a.size / 2;
-    const rB = b.size / 2;
+    const rA = sizeA / 2;
+    const rB = sizeB / 2;
     return (dx * dx + dy * dy) <= ((rA + rB + buffer) ** 2);
   }
   if (aIsCircle && !bIsCircle) {
-    const circle = { x: a.x, y: a.y, r: a.size / 2 + buffer };
-    const poly = getVertices(b);
+    const circle = { x: a.x, y: a.y, r: sizeA / 2 + buffer };
+    const poly = getVertices({ ...b, size: sizeB });
     return circlePolygonCollision(circle, poly);
   }
   if (bIsCircle && !aIsCircle) {
-    const circle = { x: b.x, y: b.y, r: b.size / 2 + buffer };
-    const poly = getVertices(a);
+    const circle = { x: b.x, y: b.y, r: sizeB / 2 + buffer };
+    const poly = getVertices({ ...a, size: sizeA });
     return circlePolygonCollision(circle, poly);
   }
-  const polyA = getVertices(a);
-  const polyB = getVertices(b);
+  const polyA = getVertices({ ...a, size: sizeA });
+  const polyB = getVertices({ ...b, size: sizeB });
   return polygonCollision(polyA, polyB);
 }
