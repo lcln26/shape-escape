@@ -24,20 +24,38 @@ export class Game {
     this.player = new Player(this);
     this.obstacles = [];
     this.particles = [];
-    this.stars = [];
     this.obstaclePool = [];
     this.particlePool = [];
 
-    // Create starfield
-    const starCount = 50;
-    for (let i = 0; i < starCount; i++) {
-      this.stars.push(new Star(
-        Math.random() * GAME_WIDTH,
-        Math.random() * GAME_HEIGHT,
-        Math.random() * 2 + 1,
-        Math.random() * 0.5 + 0.2
-      ));
-    }
+    // Starfield layers for parallax effect
+    this.starColors = ['#fff', '#0ff', '#f0f', '#ff0'];
+    this.starColorIndex = 0;
+    this.starColor = this.starColors[this.starColorIndex];
+    this.nextStarMilestone = 1000;
+    this.starLayers = [];
+    this.shootingStars = [];
+
+    const layerSettings = [
+      { count: 40, speedMultiplier: 0.3, depth: 0.4 },
+      { count: 30, speedMultiplier: 0.6, depth: 0.7 },
+      { count: 20, speedMultiplier: 1.0, depth: 1.0 }
+    ];
+
+    layerSettings.forEach(cfg => {
+      const layer = [];
+      for (let i = 0; i < cfg.count; i++) {
+        layer.push(new Star(
+          Math.random() * GAME_WIDTH,
+          Math.random() * GAME_HEIGHT,
+          Math.random() * 2 + 1,
+          Math.random() * 0.5 + 0.2,
+          cfg.depth,
+          cfg.speedMultiplier,
+          this.starColor
+        ));
+      }
+      this.starLayers.push(layer);
+    });
     this.bindEvents();
   }
 
@@ -163,6 +181,12 @@ export class Game {
     this.obstacles = [];
     this.particles = [];
     this.player = new Player(this);
+    // Reset starfield state
+    this.starColorIndex = 0;
+    this.starColor = this.starColors[this.starColorIndex];
+    this.nextStarMilestone = 1000;
+    this.starLayers.flat().forEach(s => s.color = this.starColor);
+    this.shootingStars = [];
     this.lastFrameTime = performance.now();
     requestAnimationFrame((time) => this.gameLoop(time));
   }
@@ -263,7 +287,25 @@ export class Game {
         this.particles.splice(i, 1);
       }
     }
-    this.stars.forEach(s => s.update());
+
+    // Starfield and score milestones
+    if (this.score >= this.nextStarMilestone) {
+      this.nextStarMilestone += 1000;
+      this.starColorIndex = (this.starColorIndex + 1) % this.starColors.length;
+      const newColor = this.starColors[this.starColorIndex];
+      this.starColor = newColor;
+      this.starLayers.forEach(layer => layer.forEach(s => s.color = newColor));
+      this.spawnShootingStar();
+    }
+
+    this.starLayers.forEach(layer => layer.forEach(s => s.update()));
+    for (let i = this.shootingStars.length - 1; i >= 0; i--) {
+      const s = this.shootingStars[i];
+      s.update();
+      if (s.y > GAME_HEIGHT || s.x < 0 || s.x > GAME_WIDTH) {
+        this.shootingStars.splice(i, 1);
+      }
+    }
   }
   spawnObstacle() {
     const size = 40;
@@ -277,6 +319,19 @@ export class Game {
       this.obstacles.push(this.getObstacle(x, y, size, 'normal', shape));
     }
   }
+  spawnShootingStar() {
+    const star = new Star(
+      Math.random() * GAME_WIDTH,
+      0,
+      2,
+      5,
+      1,
+      1,
+      '#ffff88'
+    );
+    star.shoot(Math.random() * 2 - 1, 8, '#ffff88');
+    this.shootingStars.push(star);
+  }
   draw() {
     if (this.state === GameStateEnum.START) {
       this.drawStartMenu();
@@ -288,7 +343,8 @@ export class Game {
     grad.addColorStop(1, '#222');
     this.ctx.fillStyle = grad;
     this.ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    this.stars.forEach(s => s.draw(this.ctx));
+    this.starLayers.forEach(layer => layer.forEach(s => s.draw(this.ctx)));
+    this.shootingStars.forEach(s => s.draw(this.ctx));
     this.obstacles.forEach(obs => obs.draw(this.ctx));
     this.player.draw(this.ctx, this.shieldActive);
     this.particles.forEach(p => p.draw(this.ctx));
