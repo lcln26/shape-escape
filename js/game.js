@@ -42,7 +42,7 @@ export class Game {
   }
 
   // Object pooling methods
-  getObstacle(x, y, size, type, shape) {
+  getObstacle(x, y, size, type, shape, vx = 0, rotationSpeed = 0) {
     if (this.obstaclePool.length > 0) {
       let obs = this.obstaclePool.pop();
       obs.x = x;
@@ -50,9 +50,12 @@ export class Game {
       obs.size = size;
       obs.type = type;
       obs.shape = shape;
+      obs.vx = vx;
+      obs.rotationSpeed = rotationSpeed;
+      obs.rotation = 0;
       return obs;
     } else {
-      return new Obstacle(x, y, size, type, shape);
+      return new Obstacle(x, y, size, type, shape, vx, rotationSpeed);
     }
   }
   returnObstacle(obs) {
@@ -269,12 +272,14 @@ export class Game {
     const size = 40;
     const x = Math.random() * (GAME_WIDTH - size) + size / 2;
     const y = -size / 2;
+    const vx = Math.random() * 200 - 100; // Horizontal velocity between -100 and 100
+    const rotationSpeed = Math.random() * 5 - 2.5; // Rotation speed between -2.5 and 2.5
     if (Math.random() < 0.1) {
-      this.obstacles.push(this.getObstacle(x, y, 30, 'powerup', 'star'));
+      this.obstacles.push(this.getObstacle(x, y, 30, 'powerup', 'star', vx, rotationSpeed));
     } else {
       const shapes = ['circle', 'square', 'triangle'];
       const shape = shapes[Math.floor(Math.random() * shapes.length)];
-      this.obstacles.push(this.getObstacle(x, y, size, 'normal', shape));
+      this.obstacles.push(this.getObstacle(x, y, size, 'normal', shape, vx, rotationSpeed));
     }
   }
   draw() {

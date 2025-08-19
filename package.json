@@ -1,0 +1,13 @@
+{
+  "name": "shape-escape",
+  "version": "1.0.0",
+  "description": "Shape Escape is a fast-paced, minimalist arcade game built with HTML and JavaScript. Control your shape, morph to match falling obstacles, dash to reach distant targets, and now—try to beat your high score within a session!",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module"
+}
