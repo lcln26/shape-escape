@@ -82,18 +82,34 @@ export function drawShield(ctx, shape, size, offset) {
 // Collision and geometry helpers.
 export function getVertices(entity) {
   let vertices = [];
-  const { x, y, size, shape } = entity;
+  const { x, y, size, shape, rotation = 0 } = entity;
+  const half = size / 2;
   if (shape === 'square') {
-    const half = size / 2;
-    vertices.push({ x: x - half, y: y - half });
-    vertices.push({ x: x + half, y: y - half });
-    vertices.push({ x: x + half, y: y + half });
-    vertices.push({ x: x - half, y: y + half });
+    vertices = [
+      { x: -half, y: -half },
+      { x: half, y: -half },
+      { x: half, y: half },
+      { x: -half, y: half },
+    ];
   } else if (shape === 'triangle') {
-    const half = size / 2;
-    vertices.push({ x: x, y: y - half });
-    vertices.push({ x: x - half, y: y + half });
-    vertices.push({ x: x + half, y: y + half });
+    vertices = [
+      { x: 0, y: -half },
+      { x: -half, y: half },
+      { x: half, y: half },
+    ];
+  } else {
+    return vertices;
+  }
+
+  if (rotation !== 0) {
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    vertices = vertices.map((v) => ({
+      x: x + v.x * cos - v.y * sin,
+      y: y + v.x * sin + v.y * cos,
+    }));
+  } else {
+    vertices = vertices.map((v) => ({ x: x + v.x, y: y + v.y }));
   }
   return vertices;
 }
