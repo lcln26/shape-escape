@@ -65,7 +65,7 @@ The game uses JavaScript modules, which Chrome and other browsers refuse to load
 
 If you change the code while a plain `http.server` is running, hard-refresh (Cmd+Shift+R / Ctrl+Shift+R) so the browser doesn't reuse old files.
 
-Press the **`** (backtick) key in game to toggle a frame meter showing frame rate, the worst frame gap, and time spent per frame.
+Press the **`** (backtick) key in game to toggle a frame meter: frame rate, the worst gap between frames, how many frames missed a refresh (**slow**), the slowest single frame of game code (**max work**), and a graph of recent frames. If frames are slow while max work stays small, the delay is outside the game; compare with the baseline at **http://localhost:8000/tools/framepace.html**.
 
 See [ROADMAP.md](ROADMAP.md) for known issues and planned improvements.
 

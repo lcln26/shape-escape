@@ -42,7 +42,7 @@ export const SHAPE_COLORS = {
 export const HUD_HEIGHT = 40;
 
 // Game feel.
-export const HIT_STOP = 0.035; // brief freeze on each catch, in seconds
+export const CATCH_POP = 1.25; // the player briefly grows to this scale on each catch
 export const SHAKE_DEATH = 14; // screen shake strength in px
 export const SHAKE_SHIELD_BREAK = 8;
 export const SHAKE_DECAY = 10; // higher settles faster

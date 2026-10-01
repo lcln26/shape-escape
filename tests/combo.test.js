@@ -26,3 +26,17 @@ test('picking up a shield star keeps the combo alive', () => {
   expect(game.shieldActive).toBe(true);
   expect(game.comboCount).toBe(1);
 });
+
+// A per-catch freeze (hit-stop) read as lag during fast streams, so catches
+// must never pause the game.
+test('catching never freezes the game', () => {
+  const game = makeGame();
+  placeOnPlayer(game, game.player.shape);
+  const dt = 1 / 60;
+  for (let i = 0; i < 5; i++) {
+    const before = game.runTime;
+    game.update(dt);
+    expect(game.runTime).toBeCloseTo(before + dt);
+  }
+  expect(game.catches).toBe(1);
+});

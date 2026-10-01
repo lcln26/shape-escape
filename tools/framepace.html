@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shape Escape frame pacing baseline</title>
+    <style>
+        body { margin: 0; background: #111; color: #f2f2f2; font: 14px/1.5 sans-serif; display: grid; place-items: center; min-height: 100vh; }
+        canvas { width: min(800px, calc(100vw - 32px)); aspect-ratio: 4 / 3; background: linear-gradient(#111, #222); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7); }
+        p { max-width: 640px; margin: 12px 16px; color: #ccc; }
+    </style>
+</head>
+
+<body>
+    <div>
+        <p>Baseline for diagnosing stutter: a nearly empty animation in the same size canvas, with the same frame meter
+            as the game. Leave it running for a minute and compare its <strong>worst</strong> and <strong>slow</strong>
+            numbers with the game's. If this page spikes the same way, the stutter comes from the browser or system,
+            not the game.</p>
+        <canvas id="c" width="1600" height="1200"></canvas>
+    </div>
+    <script type="module">
+        import { FrameMeter } from '../js/frameMeter.js';
+
+        const ctx = document.getElementById('c').getContext('2d');
+        ctx.setTransform(2, 0, 0, 2, 0, 0);
+        const meter = new FrameMeter();
+        meter.visible = true;
+        let last = performance.now();
+
+        function frame(now) {
+            const gap = now - last;
+            last = now;
+            const start = performance.now();
+            ctx.clearRect(0, 0, 800, 600);
+            // One square moving at a typical falling speed, so judder is visible too.
+            const y = (now / 1000 * 400) % 600;
+            ctx.fillStyle = '#E69F00';
+            ctx.fillRect(380, y - 20, 40, 40);
+            meter.record(now, gap, performance.now() - start);
+            meter.draw(ctx);
+            requestAnimationFrame(frame);
+        }
+        requestAnimationFrame(frame);
+    </script>
+</body>
+
+</html>

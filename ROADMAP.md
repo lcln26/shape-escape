@@ -68,9 +68,19 @@ Reported after Phase 1: motion felt stuttery, more so as things sped up.
 - [x] Canvas resolution capped at 2× the logical size (1600×1200)
 - [x] Frame meter: press **`** in game to see fps, the worst frame gap and time spent per frame
 - [x] Dev server (`.claude/launch.json`) sends `Cache-Control: no-store` so edits show up on reload
-- [ ] Confirm in a real browser with the frame meter that frames stay smooth late in a run
+- [x] Confirm in a real browser with the frame meter. Play-test showed 120 fps with **average work 0.2ms** but occasional **25ms** gaps, and it still felt laggy at times. See "Stutter, round 2" below.
 
 Result in the same harness: ~5.3ms → ~0.3ms per frame at 1600×1200.
+
+## Stutter, round 2
+
+- **What the meter showed:** 120 fps, average work 0.2ms, but the worst frame gap sometimes reached 25ms (three refreshes).
+- **The game's own code isn't causing the gaps.** 2,400 frames of update + draw with a simulated player catching at x8: typical 0–0.2ms, 99.9% under 2ms, slowest single frame 5.9ms. All of that fits inside the 8.3ms frame at 120Hz, so the 25ms gaps come from outside the game's code (browser, GPU or system).
+- **The lag feeling was most likely the Phase 3 hit-stop.** Every catch froze the game for 35ms, and streams mean several catches a second. It's removed; catches now make the player pop in size instead (`CATCH_POP`). Regression test: "catching never freezes the game".
+- [x] Remove hit-stop
+- [x] Frame meter now shows **slow** (frames that missed a refresh), **max work** (slowest single frame of game code) and a graph of the last 240 frame gaps, so outside delays can be told apart from game delays
+- [x] Baseline page `tools/framepace.html`: an almost empty animation with the same meter. If it spikes like the game, the cause is outside the game.
+- [ ] Play-test: does it still feel laggy without hit-stop? Compare the meter in the game and on `tools/framepace.html`.
 
 ## Phase 2: make catching matter ✅
 
@@ -121,7 +131,7 @@ Goal: you know what shape something is without reading it, and catches feel good
 
 - [x] Each shape has its own colour (`SHAPE_COLORS`, from the Okabe-Ito palette, which stays distinguishable with common colour blindness): circle sky blue, square orange, triangle pink-purple, shield star yellow. Falling shapes have a tinted fill and solid coloured outline; the player is solid with a white outline and changes colour with its shape.
 - [x] Sound effects generated in code (`js/audio.js`, no audio files): catch (rises a semitone per combo step), morph, dash, shield up/break, wrong shape, out of energy, a low-energy beep, achievements. **M** mutes, and it's remembered.
-- [x] Screen shake on death and shield breaks; a 35ms freeze on each catch (`HIT_STOP`); the player shatters on a wrong-shape death.
+- [x] Screen shake on death and shield breaks; the player shatters on a wrong-shape death. (A 35ms freeze on each catch was tried and removed: it felt like lag.)
 - [x] Achievement notifications, and eight achievements (was two): survive 60s / 2 min, 50 catches, max combo, 1,000 / 5,000 points, a catch below 10% energy, 5 shields. The game-over screen shows the count and any new ones.
 - [x] HUD moved into a strip along the top; shapes now spawn below it. The game-over screen shows your score.
 - [x] Start screen explains the rules and shows the three shapes with their keys.

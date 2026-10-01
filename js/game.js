@@ -1,4 +1,4 @@
-import { GAME_WIDTH, GAME_HEIGHT, MAX_DT, COMBO_RESET_TIME, SHIELD_DURATION, GameStateEnum, DASH_DURATION, RESTART_LOCKOUT, ENERGY_DRAIN, ENERGY_PER_CATCH, ENERGY_LOW, MAX_COMBO_MULTIPLIER, SPEED_CURVE, SHAPE_COLORS, HUD_HEIGHT, HIT_STOP, SHAKE_DEATH, SHAKE_SHIELD_BREAK, SHAKE_DECAY, TOAST_DURATION } from "./config.js";
+import { GAME_WIDTH, GAME_HEIGHT, MAX_DT, COMBO_RESET_TIME, SHIELD_DURATION, GameStateEnum, DASH_DURATION, RESTART_LOCKOUT, ENERGY_DRAIN, ENERGY_PER_CATCH, ENERGY_LOW, MAX_COMBO_MULTIPLIER, SPEED_CURVE, SHAPE_COLORS, HUD_HEIGHT, CATCH_POP, SHAKE_DEATH, SHAKE_SHIELD_BREAK, SHAKE_DECAY, TOAST_DURATION } from "./config.js";
 import { refinedCollisionDetection, interpolate } from "./utils.js";
 import { Player } from "./player.js";
 import { Obstacle, ObstaclePreview } from "./obstacle.js";
@@ -77,7 +77,6 @@ export class Game {
     this.shieldActive = false;
     this.shieldTimer = 0;
     this.runTime = 0;
-    this.hitStop = 0;
     this.lowEnergyBeepTimer = 0;
     this.catches = 0;
     this.catchesByShape = { circle: 0, square: 0, triangle: 0 };
@@ -297,7 +296,9 @@ export class Game {
     this.bestMultiplier = Math.max(this.bestMultiplier, this.getComboMultiplier());
     this.catches++;
     this.catchesByShape[obs.shape]++;
-    this.hitStop = HIT_STOP;
+    // A quick pop instead of a freeze: freezing on every catch felt like lag
+    // during fast streams.
+    this.player.morphScale = Math.max(this.player.morphScale, CATCH_POP);
     this.createParticles(obs.x, obs.y, SHAPE_COLORS[obs.shape], 14);
   }
 
@@ -338,11 +339,6 @@ export class Game {
       return;
     }
     if (this.state !== GameStateEnum.PLAYING) return;
-    // A brief freeze after each catch gives it weight.
-    if (this.hitStop > 0) {
-      this.hitStop -= dt;
-      return;
-    }
     this.runTime += dt;
     this.player.update(dt, this.keys);
     const obstacleSpeed = this.getObstacleSpeed();
