@@ -88,10 +88,11 @@ test.each(PATTERNS.map(p => [p.name, p]))('%s is catchable at every speed', (_, 
 
 // Through the real game: each shape touches the player at its planned time,
 // within one frame, so catches land on the beat.
-test('shapes reach the player on their planned beat', () => {
+test.each([1, 2, 3, 4])('shapes reach the player on their planned beat (seed %i)', (seed) => {
   const game = makeGame();
+  game.spawner = new Spawner(createRng(seed));
   game.endGame = () => {};
-  game.player.x = -1000; // out of the way so nothing gets caught
+  game.playerHits = () => false; // nothing gets caught, so every shape falls the whole way
   const planned = [];
   const add = game.spawner.add.bind(game.spawner);
   game.spawner.add = (arrival, x, shape, type) => {
