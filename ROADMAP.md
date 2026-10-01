@@ -186,11 +186,41 @@ Priorities from play-testing: designed patterns first, then daily challenge and 
 - [ ] ~~Better keyboard layout~~: keeping the current controls.
 - [ ] Deploy to GitHub Pages (later).
 
+## Fair patterns ✅
+
+Play-test: shapes falling in a horizontal line were impossible to all catch. Checking the numbers, three patterns broke "catchable with perfect play": the wall (10 shapes at once), the sweep (needed ~850px/s; the player moves at 400) and the zigzag (~580px/s).
+
+- [x] The spawner now plans each shape by **when it reaches the player**, on a half-beat grid, and every shape is reachable from the previous one at 80% of move speed without dashing (`REACH_SPEED`). Patterns slide sideways or wait a few half-beats to stay reachable.
+- [x] The wall became a **staircase**: a diagonal that changes shape in runs. Twins became a staggered **pair**.
+- [x] Tests check reachability over 300s for 8 seeds, every pattern at every speed, the beat grid, and column spacing.
+- [x] Energy per catch 11% → 10%, since everything is now catchable (simulated catcher on energy alone: 77s → 63s).
+
+## Phase 5: the Geometry Dash direction
+
+**Goal:** a game people want to play again and share. What makes Geometry Dash work: everything syncs to the music, every obstacle is beatable so failing feels like your fault, attempts are instant, and levels can be learned and mastered.
+
+Done:
+- [x] **Soundtrack** (`js/music.js`, `js/audio.js`): 128 BPM in A minor, built from sounds generated in code. Layers join as the run goes on: kick + hats, bass at 15s, claps at 30s, arpeggio at 45s, pads at 75s.
+- [x] **Shapes land on the beat**: they touch the player within one frame of their beat (tested in the real game).
+- [x] Catch sounds climb through the current chord as the combo grows, so streaks play in key.
+- [x] All sounds are rendered once into samples and replayed (one audio node per note), which is cheap in every browser.
+- [x] **Beat pulse** (glow, stars, combo bounce, background thump once the bass is in) and **drops** (flash, shake, colour shift, faster stars) when a layer joins.
+- [x] **Neon glow** on shapes and the player.
+- [x] **"Attempt N"** as each run starts.
+- [ ] Play-test: is the music good or grating? Is the beat pulse too much? Do drops feel like moments?
+
+Proposed next, roughly in order of impact:
+1. **Levels**: handcrafted charts for a few songs (different tempos and moods), with a **% progress bar**, a "level complete" ending, and a **practice mode with checkpoints**. This is the core of Geometry Dash's loop: learn a level, then master it. Endless and daily stay as separate modes.
+2. **Fairer hitboxes**: a slightly bigger box for catching and a slightly smaller one for wrong-shape deaths, so near-misses go your way.
+3. **Unlockables**: player trails and colours earned through achievements and levels.
+4. **Level editor and sharing**: encode a level in a link so people can make and swap them.
+5. **Go public**: GitHub Pages or itch.io, and an installable phone app (PWA).
+
 ## Ongoing: code health
 
 - [x] Move HUD and menu drawing out of `js/game.js` (now `js/hud.js`).
 - [x] Move input handling out of `js/game.js` (keyboard in `js/input.js`, touch in `js/touch.js`; both call the game's action methods).
-- [ ] Remove the object pooling code.
+- [x] Remove obstacle pooling (particles still pool).
 - [x] Draw the star power-up with `drawShape` instead of duplicate code.
 - [ ] Remove caught obstacles properly instead of moving them off screen.
 - [x] Jest set up for ES modules (`npm test`). 25 tests in `tests/` cover combos, the spawner and patterns, the daily challenge, keyboard and touch input.

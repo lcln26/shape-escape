@@ -1,10 +1,12 @@
 # Shape Escape
 
-Shape Escape is a fast-paced, minimalist arcade game built with HTML and JavaScript. Control your shape, morph to match falling obstacles, dash to reach distant targets, and now—try to beat your high score within a session!
+Shape Escape is a fast-paced rhythm arcade game built with HTML and JavaScript. Morph between circle, square and triangle to catch the shapes that match you as they land on the beat, dodge the ones that don't, and keep your energy up as the music builds.
 
 ## 🚀 Features
 - **Energy Bar:** Your energy drains constantly and every catch tops it up, so you have to keep catching shapes to stay alive.
+- **Beat-Synced Soundtrack:** A 128 BPM track generated in code. Every shape lands on the beat, catches play notes in key, and the music adds layers (and the colours shift) as the run goes on.
 - **Rising Difficulty:** Shapes fall faster and more often the longer you survive.
+- **Attempt Counter:** Every run starts with its attempt number.
 - **Pause Functionality:** Pause and resume the game at any time using the Escape key. The game also pauses itself if you switch tabs or windows.
 - **Improved Dash Mechanics:** Dash in the current or last moved direction using the Space bar.
 - **Dynamic Starfield Background:** Enjoy an immersive, animated background.
@@ -13,9 +15,9 @@ Shape Escape is a fast-paced, minimalist arcade game built with HTML and JavaScr
 - **Combo System:** Build a score multiplier (up to x8) by catching shapes in quick succession.
 - **Smooth Morph Animations:** Experience visually appealing transitions between circle, square, and triangle.
 - **Colour-Coded Shapes:** Circles, squares and triangles each have their own colour, and so does your shape.
-- **Sound Effects:** Generated in code with the Web Audio API, including a catch sound that climbs in pitch with your combo. Press **M** to mute.
+- **Sound Effects:** Generated in code with the Web Audio API. Press **M** to mute.
 - **Achievements:** Eight to unlock, with a notification when you earn one.
-- **Designed Patterns:** Streams, walls, sweeps and more mix in with single shapes as you survive longer.
+- **Designed Patterns:** Streams, sweeps, staircases and more mix in with single shapes as you survive longer. Every shape is catchable with perfect play.
 - **Daily Challenge:** The same shapes for everyone each day, with a separate daily best and a result you can copy and share.
 - **Touch Controls:** On phones and tablets, on-screen buttons replace the keyboard.
 - **Quick Restart:** Press the Space bar after a game over to play again.
