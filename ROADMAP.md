@@ -195,26 +195,30 @@ Play-test: shapes falling in a horizontal line were impossible to all catch. Che
 - [x] Tests check reachability over 300s for 8 seeds, every pattern at every speed, the beat grid, and column spacing.
 - [x] Energy per catch 11% → 10%, since everything is now catchable (simulated catcher on energy alone: 77s → 63s).
 
-## Phase 5: the Geometry Dash direction
+## Phase 5: first attempt at music (replaced)
 
-**Goal:** a game people want to play again and share. What makes Geometry Dash work: everything syncs to the music, every obstacle is beatable so failing feels like your fault, attempts are instant, and levels can be learned and mastered.
+Built a 128 BPM synth track (square/sawtooth leads, white-noise hats, claps), catch notes on a separate pluck pitched up as combos grew, "Attempt N", and white flashes at music drops. **Play-test: the sounds were awful, catches clashed with the music, and it read as a Geometry Dash clone.** The goal was that level of polish and popularity, not copying it.
 
-Done:
-- [x] **Soundtrack** (`js/music.js`, `js/audio.js`): 128 BPM in A minor, built from sounds generated in code. Layers join as the run goes on: kick + hats, bass at 15s, claps at 30s, arpeggio at 45s, pads at 75s.
-- [x] **Shapes land on the beat**: they touch the player within one frame of their beat (tested in the real game).
-- [x] Catch sounds climb through the current chord as the combo grows, so streaks play in key.
-- [x] All sounds are rendered once into samples and replayed (one audio node per note), which is cheap in every browser.
-- [x] **Beat pulse** (glow, stars, combo bounce, background thump once the bass is in) and **drops** (flash, shake, colour shift, faster stars) when a layer joins.
-- [x] **Neon glow** on shapes and the player.
-- [x] **"Attempt N"** as each run starts.
-- [ ] Play-test: is the music good or grating? Is the beat pulse too much? Do drops feel like moments?
+What went wrong, measured afterwards: the hi-hat sat almost entirely above 3kHz (centroid 13.7kHz), and catch notes were pitched up to ~6× on long combos, in a different register and timbre from the music. The audio was only checked for clipping and timing, never for how it sounded.
 
-Proposed next, roughly in order of impact:
-1. **Levels**: handcrafted charts for a few songs (different tempos and moods), with a **% progress bar**, a "level complete" ending, and a **practice mode with checkpoints**. This is the core of Geometry Dash's loop: learn a level, then master it. Endless and daily stay as separate modes.
-2. **Fairer hitboxes**: a slightly bigger box for catching and a slightly smaller one for wrong-shape deaths, so near-misses go your way.
-3. **Unlockables**: player trails and colours earned through achievements and levels.
-4. **Level editor and sharing**: encode a level in a link so people can make and swap them.
-5. **Go public**: GitHub Pages or itch.io, and an installable phone app (PWA).
+Kept: shapes landing on the beat, music following the game clock, the beat pulse and gentle hue shifts.
+
+## Phase 6: identity ✅ (needs a listen)
+
+See [DESIGN.md](DESIGN.md) for the pillars. In short: the shapes are the characters, your catches are the melody, calm surface with intense depth, fair and readable.
+
+- [x] **One scale for everything** (A minor pentatonic): chords, bass and catch notes, so a catch can't clash. Tested.
+- [x] **A voice per shape**: circle bell, square marimba, triangle plucked string (Karplus-Strong). A streak climbs the scale from the current chord's root, A4 to D6 at most. Panned by where you catch.
+- [x] **Calm music bed**: warm pads and soft bass, then a soft kick (20s), shaker (40s), busier bass (70s). Soft waveforms only.
+- [x] Shared reverb, gentle compression, a sample per note (no pitch-shifted playback). Music fades out through a closing filter on death. Heartbeat for low energy.
+- [x] Measured: the melody voices sit at 440–910Hz with essentially nothing above 3kHz; the whole mix through the real audio chain peaks at 0.75.
+- [x] **N** toggles music; touch pause menu has Music and Sound buttons.
+- [x] `tools/sounds.html`: every voice, the music at each stage (with simulated catches), every effect.
+- [x] **Visible morph**: outline and colour blend over 0.12s; gameplay still switches instantly.
+- [x] **Catch ripple**: the caught shape's outline expands and fades.
+- [x] Removed "Attempt N", the white flash and shake at music changes. Background hue shifts gently (blue → indigo → violet → purple).
+- [ ] **Listen on `tools/sounds.html` and say what's off.** This is the step that was skipped last time.
+- [ ] Open questions in DESIGN.md: music energy late in a run, a note on morph, levels vs endless.
 
 ## Ongoing: code health
 

@@ -1,12 +1,13 @@
 # Shape Escape
 
-Shape Escape is a fast-paced rhythm arcade game built with HTML and JavaScript. Morph between circle, square and triangle to catch the shapes that match you as they land on the beat, dodge the ones that don't, and keep your energy up as the music builds.
+Shape Escape is a fast-paced arcade game built with HTML and JavaScript. Morph between circle, square and triangle to catch the shapes that match you, dodge the ones that don't, and keep your energy up. Every shape has its own voice, so your catches play the melody over the soundtrack. See [DESIGN.md](DESIGN.md) for what the game is aiming for.
 
 ## 🚀 Features
 - **Energy Bar:** Your energy drains constantly and every catch tops it up, so you have to keep catching shapes to stay alive.
-- **Beat-Synced Soundtrack:** A 128 BPM track generated in code. Every shape lands on the beat, catches play notes in key, and the music adds layers (and the colours shift) as the run goes on.
+- **Your Catches Are the Melody:** Circles ring like bells, squares like a marimba, triangles like a plucked string. Every note is from one scale, so a streak plays a climbing phrase over the soundtrack.
+- **Soundtrack:** A calm 128 BPM track generated in code that builds as the run goes on. Shapes land on the beat.
+- **Morphing:** Your shape visibly reshapes itself into the next one.
 - **Rising Difficulty:** Shapes fall faster and more often the longer you survive.
-- **Attempt Counter:** Every run starts with its attempt number.
 - **Pause Functionality:** Pause and resume the game at any time using the Escape key. The game also pauses itself if you switch tabs or windows.
 - **Improved Dash Mechanics:** Dash in the current or last moved direction using the Space bar.
 - **Dynamic Starfield Background:** Enjoy an immersive, animated background.
@@ -15,7 +16,7 @@ Shape Escape is a fast-paced rhythm arcade game built with HTML and JavaScript. 
 - **Combo System:** Build a score multiplier (up to x8) by catching shapes in quick succession.
 - **Smooth Morph Animations:** Experience visually appealing transitions between circle, square, and triangle.
 - **Colour-Coded Shapes:** Circles, squares and triangles each have their own colour, and so does your shape.
-- **Sound Effects:** Generated in code with the Web Audio API. Press **M** to mute.
+- **Sound:** Generated in code with the Web Audio API. Press **M** to mute everything or **N** to turn just the music off.
 - **Achievements:** Eight to unlock, with a notification when you earn one.
 - **Designed Patterns:** Streams, sweeps, staircases and more mix in with single shapes as you survive longer. Every shape is catchable with perfect play.
 - **Daily Challenge:** The same shapes for everyone each day, with a separate daily best and a result you can copy and share.
@@ -33,8 +34,8 @@ Shape Escape is a fast-paced rhythm arcade game built with HTML and JavaScript. 
   - Press **3** for Triangle
 - **Pause**
   - Press **Escape** to pause or resume the game.
-- **Mute**
-  - Press **M** to turn sound on or off.
+- **Sound**
+  - Press **M** to turn all sound on or off, **N** for just the music.
 - **Daily challenge:**
   - Press **D** on the start screen. After a daily run, press **C** to copy your result.
 - **Touch screens:**
@@ -70,6 +71,8 @@ Press the **`** (backtick) key in game to toggle a frame meter: frame rate, the 
 See [ROADMAP.md](ROADMAP.md) for known issues and planned improvements.
 
 Run the tests with `npm install` then `npm test`.
+
+To hear every sound on its own (each shape's voice, the music at each stage, all effects), open **http://localhost:8000/tools/sounds.html**.
 
 To check difficulty tuning, open **http://localhost:8000/tools/balance.html**. It runs simulated players against the game rules and reports how long they survive.
 
