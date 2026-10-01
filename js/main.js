@@ -1,5 +1,7 @@
 import { GAME_WIDTH, GAME_HEIGHT } from "./config.js";
 import { Game } from "./game.js";
+import { bindKeyboard } from "./input.js";
+import { isTouchDevice, setupTouch } from "./touch.js";
 
 const stage = document.getElementById('stage');
 const canvas = document.getElementById('gameCanvas');
@@ -33,8 +35,11 @@ function fitCanvas() {
   ctx.setTransform(canvas.width / GAME_WIDTH, 0, 0, canvas.height / GAME_HEIGHT, 0, 0);
 }
 
+const game = new Game(canvas, ctx);
+bindKeyboard(game);
+// Touch layout changes the page's grid, so set it up before the first fit.
+if (isTouchDevice()) setupTouch(game);
+
 fitCanvas();
 new ResizeObserver(fitCanvas).observe(stage);
-
-const game = new Game(canvas, ctx);
 game.start();

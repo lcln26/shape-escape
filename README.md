@@ -15,6 +15,9 @@ Shape Escape is a fast-paced, minimalist arcade game built with HTML and JavaScr
 - **Colour-Coded Shapes:** Circles, squares and triangles each have their own colour, and so does your shape.
 - **Sound Effects:** Generated in code with the Web Audio API, including a catch sound that climbs in pitch with your combo. Press **M** to mute.
 - **Achievements:** Eight to unlock, with a notification when you earn one.
+- **Designed Patterns:** Streams, walls, sweeps and more mix in with single shapes as you survive longer.
+- **Daily Challenge:** The same shapes for everyone each day, with a separate daily best and a result you can copy and share.
+- **Touch Controls:** On phones and tablets, on-screen buttons replace the keyboard.
 - **Quick Restart:** Press the Space bar after a game over to play again.
 - **Fits Any Window:** The game scales to fill the browser window while keeping its 4:3 shape.
 
@@ -30,8 +33,12 @@ Shape Escape is a fast-paced, minimalist arcade game built with HTML and JavaScr
   - Press **Escape** to pause or resume the game.
 - **Mute**
   - Press **M** to turn sound on or off.
+- **Daily challenge:**
+  - Press **D** on the start screen. After a daily run, press **C** to copy your result.
+- **Touch screens:**
+  - Hold **◀ / ▶** to move, double-tap one to dash, and tap a shape to morph.
 - **Restart:**  
-  - When you lose, press the **space bar** to play again (after a short pause, so a last-second dash doesn't skip your score).
+  - When you lose, press the **space bar** to play again (after a short pause, so a last-second dash doesn't skip your score), or **Esc** to go back to the menu.
 - **Objective:**  
   - Morph into the matching shape and catch falling shapes to refill your energy.
   - Dodge shapes that don't match you; touching one ends the run.
@@ -61,6 +68,8 @@ If you change the code while a plain `http.server` is running, hard-refresh (Cmd
 Press the **`** (backtick) key in game to toggle a frame meter showing frame rate, the worst frame gap, and time spent per frame.
 
 See [ROADMAP.md](ROADMAP.md) for known issues and planned improvements.
+
+Run the tests with `npm install` then `npm test`.
 
 To check difficulty tuning, open **http://localhost:8000/tools/balance.html**. It runs simulated players against the game rules and reports how long they survive.
 

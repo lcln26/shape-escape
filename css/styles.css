@@ -31,12 +31,14 @@ body {
    and main.js fits the canvas inside it. */
 body {
     display: grid;
+    grid-template-areas: "title" "stage" "controls";
     grid-template-rows: auto minmax(0, 1fr) auto;
     grid-template-columns: minmax(0, 1fr);
     justify-items: center;
 }
 
 h1 {
+    grid-area: title;
     margin: 16px 16px 8px;
     font-size: clamp(24px, 5vw, 36px);
     font-weight: 500;
@@ -45,6 +47,7 @@ h1 {
 }
 
 #stage {
+    grid-area: stage;
     width: 100%;
     min-height: 0;
     padding: 0 16px;
@@ -62,6 +65,7 @@ canvas {
 }
 
 #controls {
+    grid-area: controls;
     margin: 12px 16px 16px;
     padding: 10px 15px;
     width: min(800px, calc(100% - 32px));
@@ -84,4 +88,159 @@ canvas {
 
 #controls span {
     white-space: nowrap;
+}
+
+/* ---- Touch controls (js/touch.js adds body.touch) ---- */
+
+#touch-controls {
+    display: none;
+}
+
+body.touch {
+    /* Buttons take the touches; stop double-tap zoom and scrolling elsewhere. */
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    grid-template-areas:
+        "title title"
+        "stage stage"
+        "actions actions"
+        "move shapes";
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+body.touch #controls {
+    display: none;
+}
+
+/* The wrapper dissolves so its three groups become grid items of body. */
+body.touch #touch-controls {
+    display: contents;
+}
+
+#touch-actions {
+    grid-area: actions;
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    min-height: 44px;
+    margin: 12px 16px 4px;
+}
+
+.touch-action {
+    min-width: 96px;
+    min-height: 44px;
+    padding: 0 18px;
+    font: 500 16px 'Roboto', sans-serif;
+    color: var(--text-color);
+    background: var(--control-bg);
+    border: 1px solid var(--accent-color);
+    border-radius: 22px;
+}
+
+#touch-move,
+#touch-shapes {
+    display: flex;
+    gap: 8px;
+    margin: 12px 12px 20px;
+    /* Grid items default to min-width: auto, which would let five buttons
+       push the page wider than a narrow phone. */
+    min-width: 0;
+}
+
+#touch-move {
+    grid-area: move;
+    justify-self: start;
+}
+
+#touch-shapes {
+    grid-area: shapes;
+    justify-self: end;
+}
+
+/* Sized so all five buttons fit side by side on a 360px-wide phone. */
+.touch-btn {
+    width: min(64px, 15vw);
+    height: min(64px, 15vw);
+    padding: min(12px, 3vw);
+    font-size: 26px;
+    color: var(--text-color);
+    background: var(--control-bg);
+    border: 2px solid rgba(255, 255, 255, 0.25);
+    border-radius: 16px;
+    touch-action: none;
+}
+
+#touch-move .touch-btn {
+    width: min(76px, 17vw);
+}
+
+/* Portrait: sit the game just above the controls, near the thumbs. */
+body.touch #stage {
+    align-items: end;
+}
+
+.touch-btn svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.touch-btn.pressed {
+    background: #3a3a3a;
+    border-color: #fff;
+}
+
+.touch-btn.selected {
+    border-color: #fff;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+
+/* Phones held sideways: controls go either side of the game. */
+@media (orientation: landscape) and (max-height: 500px) {
+    body.touch {
+        grid-template-areas:
+            "actions actions actions"
+            "move stage shapes";
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-rows: auto minmax(0, 1fr);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+    }
+
+    body.touch h1 {
+        display: none;
+    }
+
+    body.touch #touch-actions {
+        margin: 6px 16px;
+    }
+
+    body.touch #touch-move,
+    body.touch #touch-shapes {
+        align-self: end;
+        margin: 8px 12px 16px;
+    }
+
+    body.touch #touch-shapes {
+        flex-direction: column;
+    }
+
+    body.touch #stage {
+        align-items: center;
+        padding: 0 4px 8px;
+    }
+
+    body.touch .touch-btn {
+        width: 64px;
+        height: 64px;
+        padding: 12px;
+    }
+
+    body.touch #touch-move .touch-btn {
+        width: 76px;
+    }
 }

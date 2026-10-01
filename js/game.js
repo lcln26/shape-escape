@@ -1,4 +1,4 @@
-import { GAME_WIDTH, GAME_HEIGHT, MAX_DT, COMBO_RESET_TIME, SHIELD_DURATION, GameStateEnum, DASH_DURATION, RESTART_LOCKOUT, ENERGY_DRAIN, ENERGY_PER_CATCH, ENERGY_LOW, MAX_COMBO_MULTIPLIER, SPEED_CURVE, SPAWN_INTERVAL_CURVE, SHAPE_COLORS, HUD_HEIGHT, HIT_STOP, SHAKE_DEATH, SHAKE_SHIELD_BREAK, SHAKE_DECAY, TOAST_DURATION } from "./config.js";
+import { GAME_WIDTH, GAME_HEIGHT, MAX_DT, COMBO_RESET_TIME, SHIELD_DURATION, GameStateEnum, DASH_DURATION, RESTART_LOCKOUT, ENERGY_DRAIN, ENERGY_PER_CATCH, ENERGY_LOW, MAX_COMBO_MULTIPLIER, SPEED_CURVE, SHAPE_COLORS, HUD_HEIGHT, HIT_STOP, SHAKE_DEATH, SHAKE_SHIELD_BREAK, SHAKE_DECAY, TOAST_DURATION } from "./config.js";
 import { refinedCollisionDetection, interpolate } from "./utils.js";
 import { Player } from "./player.js";
 import { Obstacle, ObstaclePreview } from "./obstacle.js";
@@ -7,22 +7,37 @@ import { Star } from "./star.js";
 import { achievements } from "./achievements.js";
 import { FrameMeter } from "./frameMeter.js";
 import { Sfx } from "./audio.js";
+import { Spawner, SHAPE_SIZE, STAR_SIZE } from "./spawner.js";
+import { createRng, randomSeed } from "./random.js";
+import { todayKey, dailySeed, loadDailyBest, saveDailyBest, shareText } from "./daily.js";
 import { drawHUD, drawStartMenu, drawPause, drawGameOver } from "./hud.js";
 
-const MORPH_KEYS = { '1': 'circle', '2': 'square', '3': 'triangle' };
 const LOW_ENERGY_BEEP_INTERVAL = 0.5;
 const CLOSE_CALL_ENERGY = 0.1;
 
+export const GameMode = {
+  NORMAL: 'normal',
+  DAILY: 'daily',
+};
+
+// Rules, state and drawing for a run. Input (keyboard in input.js, touch in
+// touch.js) drives it through the action methods: setMove, morph, dash,
+// confirm, startRun, togglePause, toMenu and copyResult.
 export class Game {
   constructor(canvas, ctx) {
     this.canvas = canvas;
     this.ctx = ctx;
     this.state = GameStateEnum.START;
+    this.mode = GameMode.NORMAL;
     this.highScore = parseInt(localStorage.getItem('highScore')) || 0;
+    this.dailyKey = todayKey();
+    this.dailyBest = loadDailyBest(this.dailyKey);
     this.lastFrameTime = performance.now();
     this.keys = { left: false, right: false };
     this.frameMeter = new FrameMeter();
     this.sfx = new Sfx();
+    // Set by touch.js so screens show tap prompts instead of key prompts.
+    this.touch = false;
 
     this.achievements = achievements;
     this.achievementState = JSON.parse(localStorage.getItem('achievements')) || {};
@@ -47,7 +62,6 @@ export class Game {
         (Math.random() * 0.5 + 0.2) * 60
       ));
     }
-    this.bindEvents();
   }
 
   // Per-run state, shared by the first run and every restart.
@@ -57,18 +71,24 @@ export class Game {
     this.gameOverTimer = 0;
     this.deathReason = '';
     this.energy = 1;
-    this.spawnTimer = 0;
     this.comboCount = 0;
     this.comboTimer = 0;
+    this.bestMultiplier = 1;
     this.shieldActive = false;
     this.shieldTimer = 0;
     this.runTime = 0;
     this.hitStop = 0;
     this.lowEnergyBeepTimer = 0;
     this.catches = 0;
+    this.catchesByShape = { circle: 0, square: 0, triangle: 0 };
     this.closeCalls = 0;
     this.shieldsCollected = 0;
     this.newAchievements = [];
+    this.keys.left = false;
+    this.keys.right = false;
+    // The daily challenge replays the same seed; normal runs get a fresh one.
+    this.seed = this.mode === GameMode.DAILY ? dailySeed(this.dailyKey) : randomSeed();
+    this.spawner = new Spawner(createRng(this.seed));
     // Return obstacles and particles to their pools.
     this.obstacles.forEach(obs => this.returnObstacle(obs));
     this.particles.forEach(p => this.returnParticle(p));
@@ -114,104 +134,111 @@ export class Game {
     this.particlePool.push(p);
   }
 
-  bindEvents() {
-    document.addEventListener('keydown', (e) => {
-      // Audio may only start after a user gesture.
-      this.sfx.unlock();
-      if (e.code === 'Space') e.preventDefault();
-      if (e.code === 'Backquote') {
-        this.frameMeter.toggle();
-        return;
-      }
-      if (e.code === 'KeyM' && !e.repeat) {
-        this.sfx.toggleMute();
-        return;
-      }
-      if (e.code === 'Escape') {
-        if (this.state === GameStateEnum.PLAYING) {
-          this.pause();
-        } else if (this.state === GameStateEnum.PAUSED) {
-          this.state = GameStateEnum.PLAYING;
-        }
-        return;
-      }
-      // Held keys auto-repeat; only a fresh press should start, resume, restart or dash.
-      const freshSpace = e.code === 'Space' && !e.repeat;
-      if (this.state === GameStateEnum.PAUSED && freshSpace) {
-        this.state = GameStateEnum.PLAYING;
-        return;
-      }
-      if (this.state === GameStateEnum.START && freshSpace) {
-        this.state = GameStateEnum.PLAYING;
-        return;
-      }
-      if (this.state === GameStateEnum.GAMEOVER && freshSpace) {
-        if (this.canRestart()) this.restart();
-        return;
-      }
-      if (this.state === GameStateEnum.PLAYING) {
-        if (e.key === 'ArrowLeft') {
-          this.keys.left = true;
-          this.player.lastDirection = -1;
-        }
-        if (e.key === 'ArrowRight') {
-          this.keys.right = true;
-          this.player.lastDirection = 1;
-        }
-        const shape = MORPH_KEYS[e.key];
-        if (shape && this.player.shape !== shape) {
-          this.player.shape = shape;
-          this.player.morphScale = 1.5;
-          this.sfx.morph();
-        }
-        if (freshSpace && !this.player.isDashing) {
-          if (this.keys.left) {
-            this.player.dashDirection = -1;
-          } else if (this.keys.right) {
-            this.player.dashDirection = 1;
-          } else {
-            this.player.dashDirection = this.player.lastDirection;
-          }
-          this.player.isDashing = true;
-          this.player.dashTime = DASH_DURATION;
-          this.createParticles(this.player.x, this.player.y, '#ffffff', 10);
-          this.sfx.dash();
-        }
-      }
-    });
-    document.addEventListener('keyup', (e) => {
-      if (e.key === 'ArrowLeft') this.keys.left = false;
-      if (e.key === 'ArrowRight') this.keys.right = false;
-    });
-    // Keyups are lost while the page is unfocused, so drop held keys and pause.
-    const onFocusLost = () => {
-      this.keys.left = false;
-      this.keys.right = false;
-      if (this.state === GameStateEnum.PLAYING) this.pause();
-    };
-    window.addEventListener('blur', onFocusLost);
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) onFocusLost();
-    });
+  // ---- Actions (called by keyboard and touch input) ----
+
+  setMove(direction, held) {
+    if (direction < 0) this.keys.left = held;
+    else this.keys.right = held;
+    if (held && this.state === GameStateEnum.PLAYING) this.player.lastDirection = direction;
+  }
+
+  morph(shape) {
+    if (this.state !== GameStateEnum.PLAYING || this.player.shape === shape) return;
+    this.player.shape = shape;
+    this.player.morphScale = 1.5;
+    this.sfx.morph();
+  }
+
+  // Dashes in `direction` if given, else the held direction, else the last one.
+  dash(direction) {
+    if (this.state !== GameStateEnum.PLAYING || this.player.isDashing) return;
+    if (direction) {
+      this.player.dashDirection = direction;
+    } else if (this.keys.left) {
+      this.player.dashDirection = -1;
+    } else if (this.keys.right) {
+      this.player.dashDirection = 1;
+    } else {
+      this.player.dashDirection = this.player.lastDirection;
+    }
+    this.player.lastDirection = this.player.dashDirection;
+    this.player.isDashing = true;
+    this.player.dashTime = DASH_DURATION;
+    this.createParticles(this.player.x, this.player.y, '#ffffff', 10);
+    this.sfx.dash();
+  }
+
+  // The "go" button: start from the menu, resume, or retry after game over.
+  // Returns true if it did something, so input can tell it apart from a dash.
+  confirm() {
+    if (this.state === GameStateEnum.START) {
+      this.startRun(GameMode.NORMAL);
+    } else if (this.state === GameStateEnum.PAUSED) {
+      this.state = GameStateEnum.PLAYING;
+    } else if (this.state === GameStateEnum.GAMEOVER) {
+      if (this.canRestart()) this.startRun(this.mode);
+    } else {
+      return false;
+    }
+    return true;
+  }
+
+  startRun(mode) {
+    this.mode = mode;
+    this.dailyKey = todayKey();
+    this.dailyBest = loadDailyBest(this.dailyKey);
+    this.resetRun();
+    this.state = GameStateEnum.PLAYING;
+  }
+
+  togglePause() {
+    if (this.state === GameStateEnum.PLAYING) {
+      this.pause();
+    } else if (this.state === GameStateEnum.PAUSED) {
+      this.state = GameStateEnum.PLAYING;
+    }
   }
 
   pause() {
     this.state = GameStateEnum.PAUSED;
   }
 
-  canRestart() {
-    return this.gameOverTimer >= RESTART_LOCKOUT;
+  toMenu() {
+    if (this.state === GameStateEnum.GAMEOVER && !this.canRestart()) return;
+    this.resetRun();
+    this.state = GameStateEnum.START;
   }
 
-  restart() {
-    this.resetRun();
-    this.state = GameStateEnum.PLAYING;
+  // Copies the daily challenge result to the clipboard for sharing.
+  async copyResult() {
+    if (this.state !== GameStateEnum.GAMEOVER || this.mode !== GameMode.DAILY) return;
+    const text = shareText({
+      key: this.dailyKey,
+      score: this.score,
+      runTime: this.runTime,
+      bestMultiplier: this.bestMultiplier,
+      catchesByShape: this.catchesByShape,
+    });
+    try {
+      await navigator.clipboard.writeText(text);
+      this.toast('Result copied', 'Paste it anywhere to share', 'Daily');
+    } catch {
+      this.toast('Couldn\'t copy', 'Your browser blocked clipboard access', 'Daily');
+    }
+  }
+
+  // ---- Rules ----
+
+  canRestart() {
+    return this.gameOverTimer >= RESTART_LOCKOUT;
   }
 
   endGame(reason) {
     this.state = GameStateEnum.GAMEOVER;
     this.deathReason = reason;
     this.gameOverTimer = 0;
+    this.keys.left = false;
+    this.keys.right = false;
     this.shake = SHAKE_DEATH;
     if (reason === 'Out of energy!') {
       this.sfx.outOfEnergy();
@@ -219,18 +246,23 @@ export class Game {
       this.sfx.wrongShape();
       this.createParticles(this.player.x, this.player.y, SHAPE_COLORS[this.player.shape], 30);
     }
-    this.isNewHighScore = this.score > this.highScore;
-    if (this.isNewHighScore) {
-      this.highScore = this.score;
-      localStorage.setItem('highScore', this.highScore);
+    if (this.mode === GameMode.DAILY) {
+      this.isNewHighScore = this.score > this.dailyBest;
+      if (this.isNewHighScore) {
+        this.dailyBest = this.score;
+        saveDailyBest(this.dailyKey, this.score);
+      }
+    } else {
+      this.isNewHighScore = this.score > this.highScore;
+      if (this.isNewHighScore) {
+        this.highScore = this.score;
+        localStorage.setItem('highScore', this.highScore);
+      }
     }
   }
 
   getObstacleSpeed() {
     return interpolate(SPEED_CURVE, this.runTime);
-  }
-  getSpawnInterval() {
-    return interpolate(SPAWN_INTERVAL_CURVE, this.runTime);
   }
   getComboMultiplier() {
     return Math.min(1 + this.comboCount, MAX_COMBO_MULTIPLIER);
@@ -262,9 +294,22 @@ export class Game {
     this.sfx.catch(this.comboCount);
     this.comboCount++;
     this.comboTimer = 0;
+    this.bestMultiplier = Math.max(this.bestMultiplier, this.getComboMultiplier());
     this.catches++;
+    this.catchesByShape[obs.shape]++;
     this.hitStop = HIT_STOP;
     this.createParticles(obs.x, obs.y, SHAPE_COLORS[obs.shape], 14);
+  }
+
+  // Shapes appear as a flashing preview just below the HUD, then fall.
+  addPreview({ x, shape, type }) {
+    const size = type === 'powerup' ? STAR_SIZE : SHAPE_SIZE;
+    const y = HUD_HEIGHT + SHAPE_SIZE / 2 + 6;
+    this.obstaclePreviews.push(new ObstaclePreview(x, y, size, type, shape));
+  }
+
+  toast(title, description, label = 'Achievement') {
+    this.toasts.push({ label, title, description, age: 0 });
   }
 
   // Effects that keep animating in every state (shake settling after death,
@@ -282,7 +327,7 @@ export class Game {
         this.particles.splice(i, 1);
       }
     }
-    if (this.state !== GameStateEnum.PAUSED) this.stars.forEach(s => s.update(dt));
+    this.stars.forEach(s => s.update(dt));
   }
 
   update(dt) {
@@ -301,6 +346,7 @@ export class Game {
     this.runTime += dt;
     this.player.update(dt, this.keys);
     const obstacleSpeed = this.getObstacleSpeed();
+    this.spawner.update(dt, this.runTime, obstacleSpeed, (spawn) => this.addPreview(spawn));
     for (let i = this.obstaclePreviews.length - 1; i >= 0; i--) {
       let prev = this.obstaclePreviews[i];
       if (prev.update(dt)) {
@@ -369,11 +415,6 @@ export class Game {
       this.shieldTimer -= dt;
       if (this.shieldTimer <= 0) this.shieldActive = false;
     }
-    this.spawnTimer += dt;
-    if (this.spawnTimer > this.getSpawnInterval()) {
-      this.spawnObstacle();
-      this.spawnTimer = 0;
-    }
     this.checkAchievements();
   }
 
@@ -390,23 +431,12 @@ export class Game {
     this.achievementState[ach.id] = true;
     localStorage.setItem('achievements', JSON.stringify(this.achievementState));
     this.newAchievements.push(ach);
-    this.toasts.push({ title: ach.title, description: ach.description, age: 0 });
+    this.toast(ach.title, ach.description);
     this.sfx.achievement();
   }
 
-  spawnObstacle() {
-    const size = 40;
-    const x = Math.random() * (GAME_WIDTH - size) + size / 2;
-    // Below the HUD strip so new shapes never appear on top of the score.
-    const y = HUD_HEIGHT + size / 2 + 6;
-    if (Math.random() < 0.1) {
-      this.obstaclePreviews.push(new ObstaclePreview(x, y, 30, 'powerup', 'star'));
-    } else {
-      const shapes = ['circle', 'square', 'triangle'];
-      const shape = shapes[Math.floor(Math.random() * shapes.length)];
-      this.obstaclePreviews.push(new ObstaclePreview(x, y, size, 'normal', shape));
-    }
-  }
+  // ---- Drawing ----
+
   // The gradient behind the stars is the canvas's CSS background (styles.css),
   // which is far cheaper than filling every pixel each frame.
   drawBackground() {
@@ -417,7 +447,7 @@ export class Game {
     const ctx = this.ctx;
     this.drawBackground();
     if (this.state === GameStateEnum.START) {
-      drawStartMenu(ctx);
+      drawStartMenu(ctx, this);
       return;
     }
     // The playfield shakes; the HUD and overlays stay put.
@@ -434,7 +464,7 @@ export class Game {
     ctx.restore();
     drawHUD(ctx, this);
     if (this.state === GameStateEnum.GAMEOVER) drawGameOver(ctx, this);
-    if (this.state === GameStateEnum.PAUSED) drawPause(ctx);
+    if (this.state === GameStateEnum.PAUSED) drawPause(ctx, this);
   }
   // Starts the single animation loop. It runs for the life of the page and
   // every state (menu, playing, paused, game over) is handled inside it, so

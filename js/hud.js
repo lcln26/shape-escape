@@ -1,5 +1,6 @@
 import { GAME_WIDTH, GAME_HEIGHT, HUD_HEIGHT, ENERGY_LOW, SHAPE_COLORS, TOAST_DURATION, GameStateEnum } from "./config.js";
 import { drawShape } from "./utils.js";
+import { formatTime } from "./daily.js";
 
 // Everything drawn on top of the playfield: the HUD strip, energy bar,
 // achievement toasts and the start / pause / game-over screens.
@@ -27,7 +28,11 @@ export function drawHUD(ctx, game) {
 
   const mid = HUD_HEIGHT / 2;
   text(ctx, `Score ${game.score}`, 12, mid, { align: 'left', weight: 500 });
-  text(ctx, `Best ${game.highScore}`, 180, mid, { align: 'left', color: '#999' });
+  if (game.mode === 'daily') {
+    text(ctx, `Daily best ${game.dailyBest}`, 180, mid, { align: 'left', color: '#F0E442' });
+  } else {
+    text(ctx, `Best ${game.highScore}`, 180, mid, { align: 'left', color: '#999' });
+  }
 
   const multiplier = game.getComboMultiplier();
   if (multiplier > 1) {
@@ -76,20 +81,20 @@ function drawToasts(ctx, game) {
     ctx.fillRect(GAME_WIDTH / 2 - 190, y - 22, 380, 46);
     ctx.fillStyle = '#F0E442';
     ctx.fillRect(GAME_WIDTH / 2 - 190, y - 22, 4, 46);
-    text(ctx, `Achievement: ${toast.title}`, GAME_WIDTH / 2, y - 7, { size: 18, color: '#F0E442', weight: 500 });
+    text(ctx, `${toast.label}: ${toast.title}`, GAME_WIDTH / 2, y - 7, { size: 18, color: '#F0E442', weight: 500 });
     text(ctx, toast.description, GAME_WIDTH / 2, y + 12, { size: 14, color: '#ccc' });
   });
   ctx.globalAlpha = 1;
 }
 
-export function drawStartMenu(ctx) {
+export function drawStartMenu(ctx, game) {
   const cx = GAME_WIDTH / 2, cy = GAME_HEIGHT / 2;
-  text(ctx, 'Shape Escape', cx, cy - 120, { size: 48, weight: 500 });
-  text(ctx, 'Catch shapes that match you. Dodge the rest.', cx, cy - 60, { size: 18, color: '#ccc' });
-  text(ctx, 'Every catch refills your energy — run out and it\'s over.', cx, cy - 34, { size: 18, color: '#ccc' });
+  text(ctx, 'Shape Escape', cx, cy - 130, { size: 48, weight: 500 });
+  text(ctx, 'Catch shapes that match you. Dodge the rest.', cx, cy - 70, { size: 18, color: '#ccc' });
+  text(ctx, 'Every catch refills your energy — run out and it\'s over.', cx, cy - 44, { size: 18, color: '#ccc' });
 
   ['circle', 'square', 'triangle'].forEach((shape, i) => {
-    const x = cx + (i - 1) * 110, y = cy + 40;
+    const x = cx + (i - 1) * 110, y = cy + 26;
     ctx.save();
     ctx.translate(x, y);
     ctx.fillStyle = SHAPE_COLORS[shape];
@@ -97,28 +102,40 @@ export function drawStartMenu(ctx) {
     ctx.lineWidth = 3;
     drawShape(ctx, shape, 44);
     ctx.restore();
-    text(ctx, `[${i + 1}]`, x, y + 48, { size: 16, color: '#999' });
+    if (!game.touch) text(ctx, `[${i + 1}]`, x, y + 48, { size: 16, color: '#999' });
   });
 
   const blink = Math.floor(performance.now() / 600) % 2 === 0;
-  if (blink) text(ctx, 'Press Space to Start', cx, cy + 150, { size: 22, weight: 500 });
+  if (game.touch) {
+    if (blink) text(ctx, 'Tap to Start', cx, cy + 130, { size: 22, weight: 500 });
+  } else {
+    if (blink) text(ctx, 'Press Space to Start', cx, cy + 130, { size: 22, weight: 500 });
+    text(ctx, 'D: Daily challenge', cx, cy + 164, { size: 18, color: '#F0E442' });
+  }
+  const daily = game.dailyBest > 0 ? `Today's daily best: ${game.dailyBest}` : 'Same shapes for everyone, new every day';
+  text(ctx, daily, cx, cy + 192, { size: 15, color: '#999' });
 }
 
-export function drawPause(ctx) {
+export function drawPause(ctx, game) {
   dim(ctx, 0.5);
   text(ctx, 'Paused', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 10, { size: 40, weight: 500 });
-  text(ctx, 'Esc to resume · M to mute', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 30, { size: 16, color: '#ccc' });
+  if (!game.touch) {
+    text(ctx, 'Esc to resume · M to mute', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 30, { size: 16, color: '#ccc' });
+  }
 }
 
 export function drawGameOver(ctx, game) {
   dim(ctx, 0.7);
   const cx = GAME_WIDTH / 2, cy = GAME_HEIGHT / 2;
+  const daily = game.mode === 'daily';
+  if (daily) text(ctx, `Daily challenge · ${game.dailyKey}`, cx, cy - 145, { size: 16, color: '#F0E442' });
   text(ctx, game.deathReason, cx, cy - 100, { size: 40, weight: 500 });
-  text(ctx, `Score ${game.score}`, cx, cy - 45, { size: 30, weight: 500 });
+  text(ctx, `Score ${game.score} · ${formatTime(game.runTime)}`, cx, cy - 45, { size: 30, weight: 500 });
   if (game.isNewHighScore) {
-    text(ctx, 'New High Score!', cx, cy - 10, { size: 20, color: '#F0E442', weight: 500 });
+    text(ctx, daily ? 'New daily best!' : 'New High Score!', cx, cy - 10, { size: 20, color: '#F0E442', weight: 500 });
   } else {
-    text(ctx, `Best ${game.highScore}`, cx, cy - 10, { size: 20, color: '#999' });
+    const best = daily ? `Today's best ${game.dailyBest}` : `Best ${game.highScore}`;
+    text(ctx, best, cx, cy - 10, { size: 20, color: '#999' });
   }
 
   const unlocked = game.achievements.filter(a => game.achievementState[a.id]).length;
@@ -130,6 +147,12 @@ export function drawGameOver(ctx, game) {
   }
 
   if (game.canRestart()) {
-    text(ctx, 'Press Space to Restart', cx, Math.max(cy + 110, y + 40), { size: 20 });
+    const y2 = Math.max(cy + 110, y + 40);
+    if (game.touch) {
+      text(ctx, 'Tap to retry', cx, y2, { size: 20 });
+    } else {
+      text(ctx, 'Space to retry · Esc for menu', cx, y2, { size: 20 });
+      if (daily) text(ctx, 'C to copy your result', cx, y2 + 30, { size: 16, color: '#F0E442' });
+    }
   }
 }

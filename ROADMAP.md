@@ -127,20 +127,47 @@ Goal: you know what shape something is without reading it, and catches feel good
 - [x] Start screen explains the rules and shows the three shapes with their keys.
 - [ ] Play-test: is the hit-stop noticeable in a good way? Are the sounds too loud or annoying? Is the shake too much?
 
+## Bug: shield stars broke combos ✅
+
+Reported after Phase 3: picking up a star made the combo run out. Two causes, both fixed:
+
+- Collecting a star didn't reset the 2s combo timer, so the time spent going for one counted against your streak. It now keeps the combo alive without adding to it. Regression test: `tests/combo.test.js`.
+- Stars took the place of a shape (10% of spawns), leaving fewer shapes to keep the streak going. They now arrive on their own timer every 8–14s (`STAR_INTERVAL`). Test: `tests/spawner.test.js`.
+
 ## Phase 4: depth, reach and replay value
 
-- [ ] Designed spawn patterns (a row of three triangles, alternating circle/square, a fast burst of one shape) instead of pure randomness.
-- [ ] Better keyboard layout: morph keys next to the arrow keys (e.g. A/S/D or Z/X/C), keeping 1/2/3 as alternates.
-- [ ] Touch controls for phones: swipe or drag to move, three on-screen buttons to change shape.
-- [ ] Daily challenge: the same random seed for everyone each day, with a shareable result.
-- [ ] Deploy to GitHub Pages so there's a link to share.
+Priorities from play-testing: designed patterns first, then daily challenge and phone controls. **Keyboard controls stay as they are, and GitHub Pages waits.**
+
+- [x] **Designed spawn patterns** (`js/spawner.js`). Single shapes are mixed with patterns that unlock over time and become more common (20% of spawns at the start → 65% at 4 min, `PATTERN_CHANCE_CURVE`). The same pattern never comes twice in a row.
+
+| Pattern | What it asks | Unlocks |
+| --- | --- | --- |
+| Stream: a column of one shape | stay put and build a combo | 0s |
+| Twins: two different shapes side by side (twice) | pick one, avoid the other | 10s |
+| Sweep: a diagonal line of one shape | chase it | 20s |
+| Alternating: a column switching between two shapes | change shape in rhythm | 30s |
+| Wall: a full-width row in runs of 1–3, gaps narrower than the player | line up under a match; you can't dodge it | 45s |
+| Zigzag: one shape alternating between two columns | move back and forth | 75s |
+| Burst: four random shapes in quick succession | read fast | 100s |
+
+- [x] Spawning uses a seeded random number generator (`js/random.js`), so the same seed always gives the same run.
+- [x] **Daily challenge**: **D** on the start screen (or the Daily button on touch). Everyone gets the same seed for the local date. A separate daily best per day; **C** (or Share) copies a result like `Score 1240 · survived 1:32 · best combo x8`.
+- [x] **Touch controls** (`js/touch.js`), shown on touch screens (or with `?touch` in the URL): hold ◀ ▶ to move, double-tap one to dash, tap a shape to morph, plus Play / Daily / Pause / Retry / Menu / Share buttons. Portrait puts them under the game; landscape puts them either side.
+- [x] New keys added without changing existing ones: **D** daily (start screen), **Esc** back to the menu (game over), **C** copy result (daily game over).
+- [x] Energy retuned for patterns: streams handed out so many easy catches that a simulated catcher lasted ~3 min on energy alone, so energy per catch dropped from 18% to 11% (back to ~65s).
+- [ ] Play-test patterns: are any unfair or boring? Is the wall too punishing at 45s?
+- [ ] Try touch controls on a real phone (only tested in simulated sizes and with simulated taps).
+- [ ] Text inside the game is small on phones in portrait (the canvas is ~350px wide there). Consider a bigger HUD on small screens, or nudging players to landscape.
+- [ ] ~~Better keyboard layout~~: keeping the current controls.
+- [ ] Deploy to GitHub Pages (later).
 
 ## Ongoing: code health
 
 - [x] Move HUD and menu drawing out of `js/game.js` (now `js/hud.js`).
-- [ ] Move input handling out of `js/game.js`.
+- [x] Move input handling out of `js/game.js` (keyboard in `js/input.js`, touch in `js/touch.js`; both call the game's action methods).
 - [ ] Remove the object pooling code.
 - [x] Draw the star power-up with `drawShape` instead of duplicate code.
 - [ ] Remove caught obstacles properly instead of moving them off screen.
-- [ ] Real tests: collision helpers, scoring and combo rules, the restart delay, energy drain/refill, `interpolate`. Fix the Jest setup for ES modules.
+- [x] Jest set up for ES modules (`npm test`). 25 tests in `tests/` cover combos, the spawner and patterns, the daily challenge, keyboard and touch input.
+- [ ] More tests: collision helpers, energy drain/refill, `interpolate`.
 - [x] Balance simulation lives in `tools/balance.html` (open it on the dev server; it doesn't touch your real high score).

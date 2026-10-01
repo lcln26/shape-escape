@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Shape Escape</title>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -21,6 +21,19 @@
         <span><strong>Dash:</strong> [Space]</span>
         <span><strong>Pause:</strong> [Esc]</span>
         <span><strong>Mute:</strong> [M]</span>
+    </div>
+    <!-- Shown instead of #controls on touch screens (js/touch.js). -->
+    <div id="touch-controls">
+        <div id="touch-actions"></div>
+        <div id="touch-move">
+            <button class="touch-btn" data-move="-1" aria-label="Move left (double-tap to dash)"></button>
+            <button class="touch-btn" data-move="1" aria-label="Move right (double-tap to dash)"></button>
+        </div>
+        <div id="touch-shapes">
+            <button class="touch-btn" data-shape="circle" aria-label="Circle"></button>
+            <button class="touch-btn" data-shape="square" aria-label="Square"></button>
+            <button class="touch-btn" data-shape="triangle" aria-label="Triangle"></button>
+        </div>
     </div>
     <script type="module" src="js/main.js"></script>
 </body>

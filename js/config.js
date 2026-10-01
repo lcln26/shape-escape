@@ -14,7 +14,7 @@ export const RESTART_LOCKOUT = 0.75;
 // runs out, so dodging alone can't keep you alive. Values are fractions of a
 // full bar.
 export const ENERGY_DRAIN = 0.12; // per second, so a full bar lasts ~8s untouched
-export const ENERGY_PER_CATCH = 0.18;
+export const ENERGY_PER_CATCH = 0.11;
 export const ENERGY_LOW = 0.25;
 
 // Catch score is 10 x multiplier, where the multiplier grows with the combo.
@@ -24,6 +24,10 @@ export const MAX_COMBO_MULTIPLIER = 8;
 // interpolation in between; the last value holds after the final keyframe.
 export const SPEED_CURVE = [[0, 180], [45, 320], [120, 470], [240, 650]]; // px/s
 export const SPAWN_INTERVAL_CURVE = [[0, 0.9], [45, 0.75], [120, 0.6], [240, 0.45]]; // s
+// Chance that the next spawn is a designed pattern rather than a single shape.
+export const PATTERN_CHANCE_CURVE = [[0, 0.2], [45, 0.4], [120, 0.55], [240, 0.65]];
+// Shield stars arrive on their own timer, between these many seconds apart.
+export const STAR_INTERVAL = [8, 14];
 
 // Each shape has its own colour so it can be recognised without reading its
 // outline (Okabe-Ito palette, distinguishable with common colour blindness).
