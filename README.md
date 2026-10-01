@@ -4,14 +4,15 @@ Shape Escape is a fast-paced, minimalist arcade game built with HTML and JavaScr
 
 ## 🚀 Features
 - **Adaptive Difficulty:** Obstacle speed and spawn rates adjust based on your score.
-- **Pause Functionality:** Pause and resume the game at any time using the Escape key.
+- **Pause Functionality:** Pause and resume the game at any time using the Escape key. The game also pauses itself if you switch tabs or windows.
 - **Improved Dash Mechanics:** Dash in the current or last moved direction using the Space bar.
 - **Dynamic Starfield Background:** Enjoy an immersive, animated background.
 - **Shield Power-ups:** Collect power-ups that grant temporary protection against mismatches.
 - **Persistent High Score Tracking:** Keep track of your highest score across sessions.
 - **Enhanced Combo System:** Build score multipliers by matching shapes in rapid succession.
 - **Smooth Morph Animations:** Experience visually appealing transitions between circle, square, and triangle.
-- **Instant Restart:** Restart immediately by pressing the Space bar after a game over.
+- **Quick Restart:** Press the Space bar after a game over to play again.
+- **Fits Any Window:** The game scales to fill the browser window while keeping its 4:3 shape.
 
 ## 🎮 How to Play
 - **Movement:**  
@@ -24,7 +25,7 @@ Shape Escape is a fast-paced, minimalist arcade game built with HTML and JavaScr
 - **Pause**
   - Press **Escape** to pause or resume the game.
 - **Restart:**  
-  - When you lose, press the **space bar** to play again.
+  - When you lose, press the **space bar** to play again (after a short pause, so a last-second dash doesn't skip your score).
 - **Objective:**  
   - Morph into the correct shape to match incoming obstacles.
   - Build combo multipliers by rapidly matching shapes.
@@ -32,11 +33,23 @@ Shape Escape is a fast-paced, minimalist arcade game built with HTML and JavaScr
   - Survive as long as possible and beat your high score!
 
 ## 💻 Getting Started
+The game uses JavaScript modules, which Chrome and other browsers refuse to load from a file opened straight from disk, so serve it over a local web server instead:
+
 1. Clone the repository:
-  git clone https://github.com/lcln26/shape-escape.git
-2. Navigate to the project directory:
-  cd shape-escape
-3. Open **index.html** in your preferred web browser.
+   ```bash
+   git clone https://github.com/lcln26/shape-escape.git
+   cd shape-escape
+   ```
+2. Start a local server (either works):
+   ```bash
+   python3 -m http.server 8000
+   ```
+   ```bash
+   npx serve -l 8000
+   ```
+3. Open **http://localhost:8000** in your browser.
+
+See [ROADMAP.md](ROADMAP.md) for known issues and planned improvements.
 
 ## 💾 Technologies Used
 - **HTML5 Canvas:** For rendering graphics.

@@ -7,8 +7,8 @@ export class Star {
     this.size = size;
     this.speed = speed;
   }
-  update() {
-    this.y += this.speed;
+  update(dt) {
+    this.y += this.speed * dt;
     if (this.y > GAME_HEIGHT) {
       this.y = 0;
       this.x = Math.random() * GAME_WIDTH;

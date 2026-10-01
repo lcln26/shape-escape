@@ -1,4 +1,4 @@
-import { GAME_WIDTH, GAME_HEIGHT, MAX_DT, COMBO_RESET_TIME, SHIELD_DURATION, GameStateEnum, BASE_SPAWN_INTERVAL, DASH_DURATION } from "./config.js";
+import { GAME_WIDTH, GAME_HEIGHT, MAX_DT, COMBO_RESET_TIME, SHIELD_DURATION, GameStateEnum, BASE_SPAWN_INTERVAL, DASH_DURATION, RESTART_LOCKOUT } from "./config.js";
 import { refinedCollisionDetection } from "./utils.js";
 import { Player } from "./player.js";
 import { Obstacle, ObstaclePreview } from "./obstacle.js";
@@ -6,6 +6,7 @@ import { Particle } from "./particle.js";
 import { Star } from "./star.js";
 import { achievements } from "./achievements.js";
 
+const FONT_FAMILY = "Roboto, sans-serif";
 
 export class Game {
   constructor(canvas, ctx) {
@@ -14,6 +15,8 @@ export class Game {
     this.state = GameStateEnum.START;
     this.score = 0;
     this.highScore = parseInt(localStorage.getItem('highScore')) || 0;
+    this.isNewHighScore = false;
+    this.gameOverTimer = 0;
     this.spawnTimer = 0;
     this.comboCount = 0;
     this.comboTimer = 0;
@@ -40,14 +43,14 @@ export class Game {
     this.backgroundGradient.addColorStop(0, '#111');
     this.backgroundGradient.addColorStop(1, '#222');
 
-    // Create starfield
+    // Create starfield (speeds in px/s).
     const starCount = 50;
     for (let i = 0; i < starCount; i++) {
       this.stars.push(new Star(
         Math.random() * GAME_WIDTH,
         Math.random() * GAME_HEIGHT,
         Math.random() * 2 + 1,
-        Math.random() * 0.5 + 0.2
+        (Math.random() * 0.5 + 0.2) * 60
       ));
     }
     this.bindEvents();
@@ -91,30 +94,27 @@ export class Game {
 
   bindEvents() {
     document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') e.preventDefault();
       if (e.code === 'Escape') {
         if (this.state === GameStateEnum.PLAYING) {
-          this.state = GameStateEnum.PAUSED;
+          this.pause();
         } else if (this.state === GameStateEnum.PAUSED) {
           this.state = GameStateEnum.PLAYING;
-          this.lastFrameTime = performance.now();
-          requestAnimationFrame((time) => this.gameLoop(time));
         }
         return;
       }
-      if (this.state === GameStateEnum.PAUSED && e.code === 'Space') {
+      // Held keys auto-repeat; only a fresh press should start, resume, restart or dash.
+      const freshSpace = e.code === 'Space' && !e.repeat;
+      if (this.state === GameStateEnum.PAUSED && freshSpace) {
         this.state = GameStateEnum.PLAYING;
-        this.lastFrameTime = performance.now();
-        requestAnimationFrame((time) => this.gameLoop(time));
         return;
       }
-      if (this.state === GameStateEnum.START && e.code === 'Space') {
+      if (this.state === GameStateEnum.START && freshSpace) {
         this.state = GameStateEnum.PLAYING;
-        this.lastFrameTime = performance.now();
-        requestAnimationFrame((time) => this.gameLoop(time));
         return;
       }
-      if (this.state === GameStateEnum.GAMEOVER && e.code === 'Space') {
-        this.restart();
+      if (this.state === GameStateEnum.GAMEOVER && freshSpace) {
+        if (this.canRestart()) this.restart();
         return;
       }
       if (this.state === GameStateEnum.PLAYING) {
@@ -138,20 +138,17 @@ export class Game {
           this.player.shape = 'triangle';
           this.player.morphScale = 1.5;
         }
-        if (e.code === 'Space') {
-          if (!this.player.isDashing) {
-            if (this.keys.left) {
-              this.player.dashDirection = -1;
-            } else if (this.keys.right) {
-              this.player.dashDirection = 1;
-            } else {
-              this.player.dashDirection = this.player.lastDirection;
-            }
-            this.player.isDashing = true;
-            this.player.dashTime = DASH_DURATION;
-            this.createParticles(this.player.x, this.player.y, '#ffffff', 10);
+        if (freshSpace && !this.player.isDashing) {
+          if (this.keys.left) {
+            this.player.dashDirection = -1;
+          } else if (this.keys.right) {
+            this.player.dashDirection = 1;
+          } else {
+            this.player.dashDirection = this.player.lastDirection;
           }
-          e.preventDefault();
+          this.player.isDashing = true;
+          this.player.dashTime = DASH_DURATION;
+          this.createParticles(this.player.x, this.player.y, '#ffffff', 10);
         }
       }
     });
@@ -159,11 +156,31 @@ export class Game {
       if (e.key === 'ArrowLeft') this.keys.left = false;
       if (e.key === 'ArrowRight') this.keys.right = false;
     });
+    // Keyups are lost while the page is unfocused, so drop held keys and pause.
+    const onFocusLost = () => {
+      this.keys.left = false;
+      this.keys.right = false;
+      if (this.state === GameStateEnum.PLAYING) this.pause();
+    };
+    window.addEventListener('blur', onFocusLost);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) onFocusLost();
+    });
+  }
+
+  pause() {
+    this.state = GameStateEnum.PAUSED;
+  }
+
+  canRestart() {
+    return this.gameOverTimer >= RESTART_LOCKOUT;
   }
 
   restart() {
     this.state = GameStateEnum.PLAYING;
     this.score = 0;
+    this.isNewHighScore = false;
+    this.gameOverTimer = 0;
     this.spawnTimer = 0;
     this.comboCount = 0;
     this.comboTimer = 0;
@@ -178,8 +195,16 @@ export class Game {
     this.obstaclePreviews = [];
     this.particles = [];
     this.player = new Player(this);
-    this.lastFrameTime = performance.now();
-    requestAnimationFrame((time) => this.gameLoop(time));
+  }
+
+  endGame() {
+    this.state = GameStateEnum.GAMEOVER;
+    this.gameOverTimer = 0;
+    this.isNewHighScore = this.score > this.highScore;
+    if (this.isNewHighScore) {
+      this.highScore = this.score;
+      localStorage.setItem('highScore', this.highScore);
+    }
   }
 
   getObstacleSpeed() {
@@ -205,15 +230,29 @@ export class Game {
       let p = this.getParticle(
         x,
         y,
-        (Math.random() - 0.5) * 3,
-        (Math.random() - 0.5) * 3,
+        (Math.random() - 0.5) * 180,
+        (Math.random() - 0.5) * 180,
         Math.random() * 3 + 2,
         color
       );
       this.particles.push(p);
     }
   }
+  playerHits(obs) {
+    const { x, y, size, shape } = this.player;
+    return this.player.getWrapOffsets().some(offset =>
+      refinedCollisionDetection({ x: x + offset, y, size, shape }, obs)
+    );
+  }
   update(dt) {
+    if (this.state === GameStateEnum.GAMEOVER) {
+      this.gameOverTimer += dt;
+      return;
+    }
+    if (this.state === GameStateEnum.START) {
+      this.stars.forEach(s => s.update(dt));
+      return;
+    }
     if (this.state !== GameStateEnum.PLAYING) return;
     this.runTime += dt;
     this.player.update(dt, this.keys);
@@ -233,38 +272,32 @@ export class Game {
         this.obstacles.splice(i, 1);
       }
     }
-    this.obstacles.forEach((obs) => {
-      if (refinedCollisionDetection(this.player, obs)) {
-        if (obs.type === 'normal') {
-          if (this.player.shape === obs.shape) {
-            this.score += 10 * (1 + this.comboCount);
-            this.comboCount++;
-            this.comboTimer = 0;
-            this.createParticles(obs.x, obs.y, '#00ff00', 10);
-            obs.y = GAME_HEIGHT + 100;
-          } else {
-            if (this.shieldActive) {
-              this.shieldActive = false;
-              this.shieldTimer = 0;
-              this.createParticles(obs.x, obs.y, '#ffff00', 10);
-              obs.y = GAME_HEIGHT + 100;
-            } else {
-              this.state = GameStateEnum.GAMEOVER;
-              if (this.score > this.highScore) {
-                this.highScore = this.score;
-                localStorage.setItem('highScore', this.highScore);
-              }
-            }
-          }
-        } else if (obs.type === 'powerup') {
-          this.shieldsCollected++;
-          this.shieldActive = true;
-          this.shieldTimer = SHIELD_DURATION;
-          this.createParticles(obs.x, obs.y, '#00ffff', 15);
+    for (const obs of this.obstacles) {
+      if (!this.playerHits(obs)) continue;
+      if (obs.type === 'normal') {
+        if (this.player.shape === obs.shape) {
+          this.score += 10 * (1 + this.comboCount);
+          this.comboCount++;
+          this.comboTimer = 0;
+          this.createParticles(obs.x, obs.y, '#00ff00', 10);
           obs.y = GAME_HEIGHT + 100;
+        } else if (this.shieldActive) {
+          this.shieldActive = false;
+          this.shieldTimer = 0;
+          this.createParticles(obs.x, obs.y, '#ffff00', 10);
+          obs.y = GAME_HEIGHT + 100;
+        } else {
+          this.endGame();
+          return;
         }
+      } else if (obs.type === 'powerup') {
+        this.shieldsCollected++;
+        this.shieldActive = true;
+        this.shieldTimer = SHIELD_DURATION;
+        this.createParticles(obs.x, obs.y, '#00ffff', 15);
+        obs.y = GAME_HEIGHT + 100;
       }
-    });
+    }
     this.comboTimer += dt;
     if (this.comboTimer > COMBO_RESET_TIME) {
       this.comboCount = 0;
@@ -287,7 +320,7 @@ export class Game {
         this.particles.splice(i, 1);
       }
     }
-    this.stars.forEach(s => s.update());
+    this.stars.forEach(s => s.update(dt));
     this.checkAchievements();
   }
 
@@ -317,15 +350,17 @@ export class Game {
       this.obstaclePreviews.push(new ObstaclePreview(x, y, size, 'normal', shape));
     }
   }
+  drawBackground() {
+    this.ctx.fillStyle = this.backgroundGradient;
+    this.ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.stars.forEach(s => s.draw(this.ctx));
+  }
   draw() {
     if (this.state === GameStateEnum.START) {
       this.drawStartMenu();
       return;
     }
-    // Draw background starfield.
-    this.ctx.fillStyle = this.backgroundGradient;
-    this.ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    this.stars.forEach(s => s.draw(this.ctx));
+    this.drawBackground();
     this.obstaclePreviews.forEach(p => p.draw(this.ctx));
     this.obstacles.forEach(obs => obs.draw(this.ctx));
     this.player.draw(this.ctx, this.shieldActive);
@@ -335,14 +370,13 @@ export class Game {
     if (this.state === GameStateEnum.PAUSED) this.drawPause();
   }
   drawStartMenu() {
-    this.ctx.fillStyle = this.backgroundGradient;
-    this.ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.drawBackground();
     this.ctx.fillStyle = '#fff';
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
-    this.ctx.font = '40px sans-serif';
+    this.ctx.font = `40px ${FONT_FAMILY}`;
     this.ctx.fillText('Shape Escape', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 60);
-    this.ctx.font = '20px sans-serif';
+    this.ctx.font = `20px ${FONT_FAMILY}`;
     this.ctx.fillText('Press Space to Start', GAME_WIDTH / 2, GAME_HEIGHT / 2);
   }
   drawGameOver() {
@@ -351,12 +385,14 @@ export class Game {
     this.ctx.fillStyle = '#fff';
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
-    this.ctx.font = '40px sans-serif';
+    this.ctx.font = `40px ${FONT_FAMILY}`;
     this.ctx.fillText('Game Over!', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40);
-    this.ctx.font = '20px sans-serif';
-    let endMessage = this.score >= this.highScore ? "New High Score!" : "High Score: " + this.highScore;
+    this.ctx.font = `20px ${FONT_FAMILY}`;
+    let endMessage = this.isNewHighScore ? "New High Score!" : "High Score: " + this.highScore;
     this.ctx.fillText(endMessage, GAME_WIDTH / 2, GAME_HEIGHT / 2);
-    this.ctx.fillText('Press Space to Restart', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 40);
+    if (this.canRestart()) {
+      this.ctx.fillText('Press Space to Restart', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 40);
+    }
     const unlocked = this.achievements.filter(a => this.achievementState[a.id]);
     if (unlocked.length > 0) {
       this.ctx.fillText('Achievements:', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 80);
@@ -371,14 +407,14 @@ export class Game {
     this.ctx.fillStyle = '#fff';
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
-    this.ctx.font = '40px sans-serif';
+    this.ctx.font = `40px ${FONT_FAMILY}`;
     this.ctx.fillText('Paused', GAME_WIDTH / 2, GAME_HEIGHT / 2);
   }
   drawUI() {
     this.ctx.shadowColor = "rgba(0,0,0,0.5)";
     this.ctx.shadowBlur = 4;
     this.ctx.fillStyle = '#fff';
-    this.ctx.font = '20px sans-serif';
+    this.ctx.font = `20px ${FONT_FAMILY}`;
     this.ctx.textAlign = 'left';
     this.ctx.textBaseline = 'top';
     this.ctx.fillText('Score: ' + this.score, 10, 10);
@@ -391,16 +427,19 @@ export class Game {
       this.ctx.fillText('Shield: ' + Math.ceil(this.shieldTimer) + 's', GAME_WIDTH - 140, 10);
     }
   }
+  // Starts the single animation loop. It runs for the life of the page and
+  // every state (menu, playing, paused, game over) is handled inside it, so
+  // state changes never need to start or stop loops themselves.
+  start() {
+    this.lastFrameTime = performance.now();
+    requestAnimationFrame((time) => this.gameLoop(time));
+  }
   gameLoop(currentTime) {
     let dt = (currentTime - this.lastFrameTime) / 1000;
-    dt = Math.min(dt, MAX_DT);
+    dt = Math.min(Math.max(dt, 0), MAX_DT);
     this.lastFrameTime = currentTime;
     this.update(dt);
     this.draw();
-    if (this.state !== GameStateEnum.GAMEOVER) {
-      requestAnimationFrame((time) => this.gameLoop(time));
-    } else {
-      this.draw();
-    }
+    requestAnimationFrame((time) => this.gameLoop(time));
   }
 }

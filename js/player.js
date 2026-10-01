@@ -40,19 +40,31 @@ export class Player {
 }
 
 
+  // Horizontal offsets the player occupies: just 0, plus a copy on the far
+  // side while straddling a screen edge so wrapping looks and collides right.
+  getWrapOffsets() {
+    const reach = this.size;
+    const offsets = [0];
+    if (this.x < reach) offsets.push(GAME_WIDTH);
+    if (this.x > GAME_WIDTH - reach) offsets.push(-GAME_WIDTH);
+    return offsets;
+  }
+
   draw(ctx, shieldActive) {
-    ctx.save();
-    ctx.translate(this.x, this.y);
-    ctx.scale(this.morphScale, this.morphScale);
-    ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
-    ctx.shadowBlur = 10;
-    ctx.fillStyle = '#2E86C1';
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#fff';
-    drawShape(ctx, this.shape, this.size);
-    if (shieldActive) {
-      drawShield(ctx, this.shape, this.size, 6);
+    for (const offset of this.getWrapOffsets()) {
+      ctx.save();
+      ctx.translate(this.x + offset, this.y);
+      ctx.scale(this.morphScale, this.morphScale);
+      ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = '#2E86C1';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#fff';
+      drawShape(ctx, this.shape, this.size);
+      if (shieldActive) {
+        drawShield(ctx, this.shape, this.size, 6);
+      }
+      ctx.restore();
     }
-    ctx.restore();
   }
 }

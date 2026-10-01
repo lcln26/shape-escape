@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Shape Escape</title>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -11,11 +12,14 @@
 
 <body>
     <h1>Shape Escape</h1>
-    <canvas id="gameCanvas"></canvas>
+    <main id="stage">
+        <canvas id="gameCanvas"></canvas>
+    </main>
     <div id="controls">
         <span><strong>Move:</strong> ← / →</span>
         <span><strong>Morph:</strong> [1]=Circle, [2]=Square, [3]=Triangle</span>
         <span><strong>Dash:</strong> [Space]</span>
+        <span><strong>Pause:</strong> [Esc]</span>
     </div>
     <script type="module" src="js/main.js"></script>
 </body>

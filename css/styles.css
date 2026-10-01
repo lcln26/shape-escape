@@ -25,42 +25,54 @@ body {
     background: var(--bg-color);
     color: var(--text-color);
     font-family: 'Roboto', sans-serif;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: start;
+}
+
+/* Title, stage and controls stacked; the stage takes whatever height is left
+   and main.js fits the canvas inside it. */
+body {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
 }
 
 h1 {
-    margin-top: 20px;
-    margin-bottom: 10px;
-    font-size: 36px;
+    margin: 16px 16px 8px;
+    font-size: clamp(24px, 5vw, 36px);
     font-weight: 500;
     letter-spacing: 0.5px;
     text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
 }
 
+#stage {
+    width: 100%;
+    min-height: 0;
+    padding: 0 16px;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+}
+
 canvas {
     display: block;
-    margin: 0 auto 20px;
-    border: 2px solid var(--accent-color);
+    /* A ring instead of a border, so it doesn't shrink the drawing area. */
     border-radius: var(--border-radius);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 0 0 2px var(--accent-color), 0 4px 8px rgba(0, 0, 0, 0.4);
     background: transparent;
 }
 
 #controls {
-    margin: 10px auto;
+    margin: 12px 16px 16px;
     padding: 10px 15px;
-    width: 800px;
-    max-width: 90%;
+    width: min(800px, calc(100% - 32px));
     background: var(--control-bg);
     border: 1px solid var(--accent-color);
     border-radius: var(--border-radius);
     display: flex;
+    flex-wrap: wrap;
     justify-content: center;
     align-items: center;
-    gap: 20px;
+    gap: 8px 20px;
     font-size: 16px;
     font-weight: 500;
     transition: background var(--transition-speed);

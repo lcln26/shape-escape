@@ -9,8 +9,8 @@ export class Particle {
     this.alpha = 1;
   }
   update(dt) {
-    this.x += this.vx;
-    this.y += this.vy;
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
     this.alpha -= 0.02 * dt * 60;
   }
   draw(ctx) {

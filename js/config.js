@@ -1,6 +1,5 @@
 export const GAME_WIDTH = 800;
 export const GAME_HEIGHT = 600;
-export const dpr = window.devicePixelRatio || 1;
 export const BASE_SPAWN_INTERVAL = 1.0;
 export const COMBO_RESET_TIME = 2.0;
 export const SHIELD_DURATION = 5.0;
@@ -9,6 +8,8 @@ export const MOVE_SPEED = 400;
 export const DASH_SPEED = 1200;
 export const MORPH_SCALE_DECAY = 3;
 export const MAX_DT = 0.1;
+// Ignore Space for this long after dying so a panic dash doesn't skip the score.
+export const RESTART_LOCKOUT = 0.75;
 
 export const GameStateEnum = {
   START: "start",
