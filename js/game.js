@@ -161,7 +161,7 @@ export class Game {
     if (this.state === GameStateEnum.START) {
       this.startRun(GameMode.NORMAL);
     } else if (this.state === GameStateEnum.PAUSED) {
-      this.state = GameStateEnum.PLAYING;
+      this.resume();
     } else if (this.state === GameStateEnum.GAMEOVER) {
       if (this.canRestart()) this.startRun(this.mode);
     } else {
@@ -176,22 +176,32 @@ export class Game {
     this.dailyBest = loadDailyBest(this.dailyKey);
     this.resetRun();
     this.state = GameStateEnum.PLAYING;
+    this.sfx.resume();
+    this.sfx.startMusic();
   }
 
   togglePause() {
     if (this.state === GameStateEnum.PLAYING) {
       this.pause();
     } else if (this.state === GameStateEnum.PAUSED) {
-      this.state = GameStateEnum.PLAYING;
+      this.resume();
     }
   }
 
   pause() {
     this.state = GameStateEnum.PAUSED;
+    this.sfx.pause();
+  }
+
+  resume() {
+    this.state = GameStateEnum.PLAYING;
+    this.sfx.resume();
   }
 
   toMenu() {
     if (this.state === GameStateEnum.GAMEOVER && !this.canRestart()) return;
+    this.sfx.stopMusic();
+    this.sfx.resume();
     this.resetRun();
     this.state = GameStateEnum.START;
   }
@@ -227,6 +237,7 @@ export class Game {
     this.keys.left = false;
     this.keys.right = false;
     this.shake = SHAKE_DEATH;
+    this.sfx.stopMusic();
     if (reason === 'Out of energy!') {
       this.sfx.outOfEnergy();
     } else {
@@ -278,7 +289,7 @@ export class Game {
     if (this.energy < CLOSE_CALL_ENERGY) this.closeCalls++;
     this.score += 10 * this.getComboMultiplier();
     this.energy = Math.min(1, this.energy + ENERGY_PER_CATCH);
-    this.sfx.catch(this.comboCount);
+    this.sfx.catch(this.comboCount, this.runTime);
     this.comboCount++;
     this.comboTimer = 0;
     this.bestMultiplier = Math.max(this.bestMultiplier, this.getComboMultiplier());
@@ -327,6 +338,7 @@ export class Game {
     }
     if (this.state !== GameStateEnum.PLAYING) return;
     this.runTime += dt;
+    this.sfx.updateMusic(this.runTime);
     this.player.update(dt, this.keys);
     // Falling shapes move, then finished previews are released, then new
     // previews spawn, so each accounts for this frame's time exactly once and
