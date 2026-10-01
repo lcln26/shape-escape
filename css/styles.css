@@ -58,7 +58,7 @@ canvas {
     /* A ring instead of a border, so it doesn't shrink the drawing area. */
     border-radius: var(--border-radius);
     box-shadow: 0 0 0 2px var(--accent-color), 0 4px 8px rgba(0, 0, 0, 0.4);
-    background: transparent;
+    background: linear-gradient(#111, #222);
 }
 
 #controls {

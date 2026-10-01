@@ -11,6 +11,19 @@ function getScaledSize(size, shape) {
   return size * (SHAPE_SCALES[shape] || 1);
 }
 
+// Piecewise-linear lookup in [x, y] keyframes sorted by x, clamped at both ends.
+export function interpolate(curve, x) {
+  if (x <= curve[0][0]) return curve[0][1];
+  for (let i = 1; i < curve.length; i++) {
+    const [x1, y1] = curve[i];
+    if (x <= x1) {
+      const [x0, y0] = curve[i - 1];
+      return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+    }
+  }
+  return curve[curve.length - 1][1];
+}
+
 // Draws a shape based on type.
 export function drawShape(ctx, shape, size) {
   size = getScaledSize(size, shape);

@@ -55,16 +55,48 @@ A running record of the project review, what's been fixed and what's planned nex
 - [x] Canvas text uses Roboto
 - [x] README explains how to run a local server; the controls bar lists Pause
 
-## Phase 2: make catching matter
+## Phase 1.5: stutter fix ✅
+
+Reported after Phase 1: motion felt stuttery, more so as things sped up.
+
+- Measured with a harness that runs the real `update()` + `draw()` and forces the GPU to finish each frame. Per-frame work **doesn't** grow as the game speeds up (about 3 shapes are on screen early and late, because faster shapes leave sooner). It **does** scale with canvas resolution, and the full-screen gradient fill dominated (~4.4 of ~5.2ms at 1600×1200).
+- Likely explanation: frames occasionally missed the 120Hz budget (8.3ms). The faster things move, the bigger each dropped frame's jump looks, so it felt worse later in a run. Phase 1 also let the canvas resolution follow the window size, which made big windows more expensive than the original fixed 1600×1200.
+- Caveat: the harness probably pushes Chrome into slower CPU rendering, so the absolute numbers overstate real GPU cost. It hasn't been confirmed on real frames yet.
+
+- [x] Background gradient moved to CSS; each frame just clears the canvas
+- [x] Removed `shadowBlur` from shapes, player and HUD (black shadows on a near-black background were invisible anyway)
+- [x] Canvas resolution capped at 2× the logical size (1600×1200)
+- [x] Frame meter: press **`** in game to see fps, the worst frame gap and time spent per frame
+- [x] Dev server (`.claude/launch.json`) sends `Cache-Control: no-store` so edits show up on reload
+- [ ] Confirm in a real browser with the frame meter that frames stay smooth late in a run
+
+Result in the same harness: ~5.3ms → ~0.3ms per frame at 1600×1200.
+
+## Phase 2: make catching matter ✅ (first pass, needs play-testing)
 
 Goal: the player must keep catching shapes to survive, and the pressure keeps building whatever they do.
 
-- [ ] **Energy bar** that drains over time and refills on each catch; the run ends when it's empty. Dodging buys time but can't last forever.
-- [ ] **Difficulty based on time survived** instead of score, so the curve is smooth and predictable.
-- [ ] Rebalance scoring so combos reward skill without changing the speed.
-- [ ] Decide what the shield does once the energy bar exists (absorb one wrong shape? pause the drain?).
+- [x] **Energy bar** that drains over time and refills on each catch; the run ends when it's empty. Drains 10% per second, each catch refills 20% (`ENERGY_*` in `js/config.js`). Shown along the bottom under the player and pulses red when low.
+- [x] **Difficulty based on time survived** instead of score: `SPEED_CURVE` and `SPAWN_INTERVAL_CURVE` keyframes in `js/config.js` (150 → 300 → 450 → 600 px/s at 0/60/180/330s).
+- [x] Combo multiplier capped at x8 (`MAX_COMBO_MULTIPLIER`); score no longer affects speed at all.
+- [x] Shield decision: unchanged for now. It still absorbs one wrong shape and doesn't touch energy.
+- [x] Game-over screen says why the run ended ("Wrong shape!" / "Out of energy!").
 - [ ] Play-test and tune: drain rate, refill per catch, ramp speed.
-- Alternative to consider if the energy bar doesn't feel right: lives that you lose when a shape you could have caught hits the floor.
+
+Simulation results (30 seeded runs each, simulated players with a 0.25s reaction time):
+
+| Player | Median survival | How runs ended |
+| --- | --- | --- |
+| Dodger (never changes shape, only avoids shapes that would kill it) | 10s | all ran out of energy |
+| Catcher (goes for reachable shapes, dodges the wrong ones crudely) | 27s | all hit a wrong shape (the bot dodges badly) |
+| Catcher with wrong-shape deaths turned off (tests energy only) | 2.4 min (best 4.7) | all ran out of energy as speed rose |
+
+So dodging alone now dies in 10s, a decent catcher keeps its energy up for minutes, and the speed-up eventually ends the run. Before this change the dodger survived 3+ minutes with the speed stuck at 150.
+
+Ideas if it doesn't feel right after play-testing:
+- Lives that you lose when a shape you could have caught hits the floor.
+- Make the drain rate rise slowly over time too.
+- Have the shield also pause the drain while active.
 
 ## Phase 3: readability and game feel
 
@@ -90,4 +122,5 @@ Goal: you know what shape something is without reading it, and catches feel good
 - [ ] Remove the object pooling code.
 - [ ] Draw the star power-up with `drawShape` instead of duplicate code.
 - [ ] Remove caught obstacles properly instead of moving them off screen.
-- [ ] Real tests: collision helpers, scoring and combo rules, the restart delay. Fix the Jest setup for ES modules.
+- [ ] Real tests: collision helpers, scoring and combo rules, the restart delay, energy drain/refill, `interpolate`. Fix the Jest setup for ES modules.
+- [ ] Turn the balance simulation (simulated dodger/catcher players over seeded runs) into a script in the repo so tuning changes can be checked quickly.

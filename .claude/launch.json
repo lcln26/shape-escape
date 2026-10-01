@@ -4,7 +4,10 @@
     {
       "name": "shape-escape",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8000"],
+      "runtimeArgs": [
+        "-c",
+        "import http.server as h\nclass NoCache(h.SimpleHTTPRequestHandler):\n    def end_headers(self):\n        self.send_header('Cache-Control', 'no-store')\n        super().end_headers()\nh.test(HandlerClass=NoCache, port=8000)"
+      ],
       "port": 8000
     }
   ]

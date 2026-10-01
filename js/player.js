@@ -55,8 +55,6 @@ export class Player {
       ctx.save();
       ctx.translate(this.x + offset, this.y);
       ctx.scale(this.morphScale, this.morphScale);
-      ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
-      ctx.shadowBlur = 10;
       ctx.fillStyle = '#2E86C1';
       ctx.lineWidth = 3;
       ctx.strokeStyle = '#fff';

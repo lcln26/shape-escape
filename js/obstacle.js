@@ -13,8 +13,6 @@ export class Obstacle {
   }
   draw(ctx) {
     ctx.lineWidth = 3;
-    ctx.shadowColor = "rgba(0, 0, 0, 0.3)";
-    ctx.shadowBlur = 8;
     if (this.type === 'normal') {
       ctx.fillStyle = '#222';
       ctx.strokeStyle = '#fff';
@@ -23,7 +21,6 @@ export class Obstacle {
       drawShape(ctx, this.shape, this.size);
       ctx.restore();
     } else if (this.type === 'powerup') {
-      ctx.shadowBlur = 0;
       ctx.fillStyle = '#ffd700';
       ctx.beginPath();
       let spikes = 5,
@@ -46,7 +43,6 @@ export class Obstacle {
       ctx.closePath();
       ctx.fill();
     }
-    ctx.shadowBlur = 0;
   }
 }
 
@@ -70,7 +66,6 @@ export class ObstaclePreview {
     ctx.save();
     ctx.globalAlpha = 0.5 + 0.5 * this.alpha;
     ctx.lineWidth = 5;
-    ctx.shadowBlur = 0;
     const flash = Math.floor(Date.now() / 200) % 2 === 0;
     if (this.type === 'powerup') {
       ctx.fillStyle = '#ffd700';

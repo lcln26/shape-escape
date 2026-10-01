@@ -1,10 +1,11 @@
-import { GAME_WIDTH, GAME_HEIGHT, MAX_DT, COMBO_RESET_TIME, SHIELD_DURATION, GameStateEnum, BASE_SPAWN_INTERVAL, DASH_DURATION, RESTART_LOCKOUT } from "./config.js";
-import { refinedCollisionDetection } from "./utils.js";
+import { GAME_WIDTH, GAME_HEIGHT, MAX_DT, COMBO_RESET_TIME, SHIELD_DURATION, GameStateEnum, DASH_DURATION, RESTART_LOCKOUT, ENERGY_DRAIN, ENERGY_PER_CATCH, ENERGY_LOW, MAX_COMBO_MULTIPLIER, SPEED_CURVE, SPAWN_INTERVAL_CURVE } from "./config.js";
+import { refinedCollisionDetection, interpolate } from "./utils.js";
 import { Player } from "./player.js";
 import { Obstacle, ObstaclePreview } from "./obstacle.js";
 import { Particle } from "./particle.js";
 import { Star } from "./star.js";
 import { achievements } from "./achievements.js";
+import { FrameMeter } from "./frameMeter.js";
 
 const FONT_FAMILY = "Roboto, sans-serif";
 
@@ -17,6 +18,8 @@ export class Game {
     this.highScore = parseInt(localStorage.getItem('highScore')) || 0;
     this.isNewHighScore = false;
     this.gameOverTimer = 0;
+    this.deathReason = '';
+    this.energy = 1;
     this.spawnTimer = 0;
     this.comboCount = 0;
     this.comboTimer = 0;
@@ -24,6 +27,7 @@ export class Game {
     this.shieldTimer = 0;
     this.lastFrameTime = performance.now();
     this.keys = { left: false, right: false };
+    this.frameMeter = new FrameMeter();
 
     this.runTime = 0;
     this.shieldsCollected = 0;
@@ -37,11 +41,6 @@ export class Game {
     this.stars = [];
     this.obstaclePool = [];
     this.particlePool = [];
-
-    // Cache background gradient to avoid re-creating it every frame.
-    this.backgroundGradient = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
-    this.backgroundGradient.addColorStop(0, '#111');
-    this.backgroundGradient.addColorStop(1, '#222');
 
     // Create starfield (speeds in px/s).
     const starCount = 50;
@@ -95,6 +94,10 @@ export class Game {
   bindEvents() {
     document.addEventListener('keydown', (e) => {
       if (e.code === 'Space') e.preventDefault();
+      if (e.code === 'Backquote') {
+        this.frameMeter.toggle();
+        return;
+      }
       if (e.code === 'Escape') {
         if (this.state === GameStateEnum.PLAYING) {
           this.pause();
@@ -181,6 +184,8 @@ export class Game {
     this.score = 0;
     this.isNewHighScore = false;
     this.gameOverTimer = 0;
+    this.deathReason = '';
+    this.energy = 1;
     this.spawnTimer = 0;
     this.comboCount = 0;
     this.comboTimer = 0;
@@ -197,8 +202,9 @@ export class Game {
     this.player = new Player(this);
   }
 
-  endGame() {
+  endGame(reason) {
     this.state = GameStateEnum.GAMEOVER;
+    this.deathReason = reason;
     this.gameOverTimer = 0;
     this.isNewHighScore = this.score > this.highScore;
     if (this.isNewHighScore) {
@@ -208,22 +214,13 @@ export class Game {
   }
 
   getObstacleSpeed() {
-    if (this.score < 5000) {
-      return 150 + (this.score / 5000) * 200;
-    } else if (this.score < 15000) {
-      return 350 + ((this.score - 5000) / 10000) * 150;
-    } else {
-      return 500 + ((this.score - 15000) / 10000) * 100;
-    }
+    return interpolate(SPEED_CURVE, this.runTime);
   }
   getSpawnInterval() {
-    if (this.score < 5000) {
-      return 1.0 - (this.score / 5000) * 0.1;
-    } else if (this.score < 15000) {
-      return 0.9 - ((this.score - 5000) / 10000) * 0.2;
-    } else {
-      return Math.max(0.5, 0.7 - ((this.score - 15000) / 10000) * 0.2);
-    }
+    return interpolate(SPAWN_INTERVAL_CURVE, this.runTime);
+  }
+  getComboMultiplier() {
+    return Math.min(1 + this.comboCount, MAX_COMBO_MULTIPLIER);
   }
   createParticles(x, y, color, amount = 15) {
     for (let i = 0; i < amount; i++) {
@@ -276,7 +273,8 @@ export class Game {
       if (!this.playerHits(obs)) continue;
       if (obs.type === 'normal') {
         if (this.player.shape === obs.shape) {
-          this.score += 10 * (1 + this.comboCount);
+          this.score += 10 * this.getComboMultiplier();
+          this.energy = Math.min(1, this.energy + ENERGY_PER_CATCH);
           this.comboCount++;
           this.comboTimer = 0;
           this.createParticles(obs.x, obs.y, '#00ff00', 10);
@@ -287,7 +285,7 @@ export class Game {
           this.createParticles(obs.x, obs.y, '#ffff00', 10);
           obs.y = GAME_HEIGHT + 100;
         } else {
-          this.endGame();
+          this.endGame('Wrong shape!');
           return;
         }
       } else if (obs.type === 'powerup') {
@@ -297,6 +295,12 @@ export class Game {
         this.createParticles(obs.x, obs.y, '#00ffff', 15);
         obs.y = GAME_HEIGHT + 100;
       }
+    }
+    this.energy -= ENERGY_DRAIN * dt;
+    if (this.energy <= 0) {
+      this.energy = 0;
+      this.endGame('Out of energy!');
+      return;
     }
     this.comboTimer += dt;
     if (this.comboTimer > COMBO_RESET_TIME) {
@@ -350,9 +354,10 @@ export class Game {
       this.obstaclePreviews.push(new ObstaclePreview(x, y, size, 'normal', shape));
     }
   }
+  // The gradient behind the stars is the canvas's CSS background (styles.css),
+  // which is far cheaper than filling every pixel each frame.
   drawBackground() {
-    this.ctx.fillStyle = this.backgroundGradient;
-    this.ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     this.stars.forEach(s => s.draw(this.ctx));
   }
   draw() {
@@ -386,7 +391,7 @@ export class Game {
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
     this.ctx.font = `40px ${FONT_FAMILY}`;
-    this.ctx.fillText('Game Over!', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40);
+    this.ctx.fillText(this.deathReason, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40);
     this.ctx.font = `20px ${FONT_FAMILY}`;
     let endMessage = this.isNewHighScore ? "New High Score!" : "High Score: " + this.highScore;
     this.ctx.fillText(endMessage, GAME_WIDTH / 2, GAME_HEIGHT / 2);
@@ -411,21 +416,37 @@ export class Game {
     this.ctx.fillText('Paused', GAME_WIDTH / 2, GAME_HEIGHT / 2);
   }
   drawUI() {
-    this.ctx.shadowColor = "rgba(0,0,0,0.5)";
-    this.ctx.shadowBlur = 4;
     this.ctx.fillStyle = '#fff';
     this.ctx.font = `20px ${FONT_FAMILY}`;
     this.ctx.textAlign = 'left';
     this.ctx.textBaseline = 'top';
     this.ctx.fillText('Score: ' + this.score, 10, 10);
     this.ctx.fillText('High Score: ' + this.highScore, 10, 35);
-    this.ctx.shadowBlur = 0;
     if (this.comboCount > 1) {
-      this.ctx.fillText('Combo x' + (this.comboCount + 1), 10, 60);
+      this.ctx.fillText('Combo x' + this.getComboMultiplier(), 10, 60);
     }
     if (this.shieldActive) {
       this.ctx.fillText('Shield: ' + Math.ceil(this.shieldTimer) + 's', GAME_WIDTH - 140, 10);
     }
+    this.drawEnergyBar();
+  }
+  // Along the bottom edge, just under the player, where the eyes already are.
+  drawEnergyBar() {
+    const width = 300, height = 10;
+    const x = (GAME_WIDTH - width) / 2, y = GAME_HEIGHT - 20;
+    const low = this.energy < ENERGY_LOW;
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+    this.ctx.fillRect(x, y, width, height);
+    let color = '#2ecc71';
+    if (this.energy < 0.5) color = '#f1c40f';
+    if (low) color = '#e74c3c';
+    this.ctx.fillStyle = color;
+    // Pulse while low so it reads as a warning without looking away.
+    if (low && this.state === GameStateEnum.PLAYING) {
+      this.ctx.globalAlpha = 0.55 + 0.45 * Math.sin(performance.now() / 80);
+    }
+    this.ctx.fillRect(x, y, width * this.energy, height);
+    this.ctx.globalAlpha = 1;
   }
   // Starts the single animation loop. It runs for the life of the page and
   // every state (menu, playing, paused, game over) is handled inside it, so
@@ -435,11 +456,14 @@ export class Game {
     requestAnimationFrame((time) => this.gameLoop(time));
   }
   gameLoop(currentTime) {
-    let dt = (currentTime - this.lastFrameTime) / 1000;
-    dt = Math.min(Math.max(dt, 0), MAX_DT);
+    const gapMs = currentTime - this.lastFrameTime;
+    const dt = Math.min(Math.max(gapMs / 1000, 0), MAX_DT);
     this.lastFrameTime = currentTime;
+    const workStart = performance.now();
     this.update(dt);
     this.draw();
+    this.frameMeter.record(currentTime, gapMs, performance.now() - workStart);
+    this.frameMeter.draw(this.ctx);
     requestAnimationFrame((time) => this.gameLoop(time));
   }
 }
