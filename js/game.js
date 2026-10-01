@@ -335,6 +335,9 @@ export class Game {
         }
       } else if (obs.type === 'powerup') {
         this.shieldsCollected++;
+        // Keeps the combo alive (without adding to it): going for a star
+        // shouldn't cost you your streak.
+        this.comboTimer = 0;
         this.shieldActive = true;
         this.shieldTimer = SHIELD_DURATION;
         this.sfx.shieldUp();
