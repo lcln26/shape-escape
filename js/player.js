@@ -1,4 +1,4 @@
-import { GAME_WIDTH, GAME_HEIGHT, MOVE_SPEED, DASH_SPEED, MORPH_SCALE_DECAY, DASH_DURATION } from "./config.js";
+import { GAME_WIDTH, GAME_HEIGHT, MOVE_SPEED, DASH_SPEED, MORPH_SCALE_DECAY, DASH_DURATION, SHAPE_COLORS } from "./config.js";
 import { drawShape, drawShield } from "./utils.js";
 
 export class Player {
@@ -55,7 +55,7 @@ export class Player {
       ctx.save();
       ctx.translate(this.x + offset, this.y);
       ctx.scale(this.morphScale, this.morphScale);
-      ctx.fillStyle = '#2E86C1';
+      ctx.fillStyle = SHAPE_COLORS[this.shape];
       ctx.lineWidth = 3;
       ctx.strokeStyle = '#fff';
       drawShape(ctx, this.shape, this.size);

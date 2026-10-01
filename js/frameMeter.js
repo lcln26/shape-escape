@@ -1,4 +1,4 @@
-import { GAME_WIDTH } from "./config.js";
+import { GAME_WIDTH, HUD_HEIGHT } from "./config.js";
 
 // Debug overlay (toggle with the ` key) showing how smoothly frames arrive.
 // "worst" is the longest gap between frames in the last second, and "work"
@@ -32,13 +32,13 @@ export class FrameMeter {
   }
   draw(ctx) {
     if (!this.visible || !this.text) return;
-    // Top-right, under the shield timer.
+    // Top-right, just under the HUD strip.
     ctx.font = '14px monospace';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
     ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-    ctx.fillRect(GAME_WIDTH - 330, 36, 324, 20);
+    ctx.fillRect(GAME_WIDTH - 330, HUD_HEIGHT + 4, 324, 20);
     ctx.fillStyle = '#0f0';
-    ctx.fillText(this.text, GAME_WIDTH - 10, 39);
+    ctx.fillText(this.text, GAME_WIDTH - 10, HUD_HEIGHT + 7);
   }
 }

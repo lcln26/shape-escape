@@ -12,6 +12,9 @@ Shape Escape is a fast-paced, minimalist arcade game built with HTML and JavaScr
 - **Persistent High Score Tracking:** Keep track of your highest score across sessions.
 - **Combo System:** Build a score multiplier (up to x8) by catching shapes in quick succession.
 - **Smooth Morph Animations:** Experience visually appealing transitions between circle, square, and triangle.
+- **Colour-Coded Shapes:** Circles, squares and triangles each have their own colour, and so does your shape.
+- **Sound Effects:** Generated in code with the Web Audio API, including a catch sound that climbs in pitch with your combo. Press **M** to mute.
+- **Achievements:** Eight to unlock, with a notification when you earn one.
 - **Quick Restart:** Press the Space bar after a game over to play again.
 - **Fits Any Window:** The game scales to fill the browser window while keeping its 4:3 shape.
 
@@ -25,6 +28,8 @@ Shape Escape is a fast-paced, minimalist arcade game built with HTML and JavaScr
   - Press **3** for Triangle
 - **Pause**
   - Press **Escape** to pause or resume the game.
+- **Mute**
+  - Press **M** to turn sound on or off.
 - **Restart:**  
   - When you lose, press the **space bar** to play again (after a short pause, so a last-second dash doesn't skip your score).
 - **Objective:**  
@@ -56,6 +61,8 @@ If you change the code while a plain `http.server` is running, hard-refresh (Cmd
 Press the **`** (backtick) key in game to toggle a frame meter showing frame rate, the worst frame gap, and time spent per frame.
 
 See [ROADMAP.md](ROADMAP.md) for known issues and planned improvements.
+
+To check difficulty tuning, open **http://localhost:8000/tools/balance.html**. It runs simulated players against the game rules and reports how long they survive.
 
 ## 💾 Technologies Used
 - **HTML5 Canvas:** For rendering graphics.

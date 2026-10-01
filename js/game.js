@@ -1,4 +1,4 @@
-import { GAME_WIDTH, GAME_HEIGHT, MAX_DT, COMBO_RESET_TIME, SHIELD_DURATION, GameStateEnum, DASH_DURATION, RESTART_LOCKOUT, ENERGY_DRAIN, ENERGY_PER_CATCH, ENERGY_LOW, MAX_COMBO_MULTIPLIER, SPEED_CURVE, SPAWN_INTERVAL_CURVE } from "./config.js";
+import { GAME_WIDTH, GAME_HEIGHT, MAX_DT, COMBO_RESET_TIME, SHIELD_DURATION, GameStateEnum, DASH_DURATION, RESTART_LOCKOUT, ENERGY_DRAIN, ENERGY_PER_CATCH, ENERGY_LOW, MAX_COMBO_MULTIPLIER, SPEED_CURVE, SPAWN_INTERVAL_CURVE, SHAPE_COLORS, HUD_HEIGHT, HIT_STOP, SHAKE_DEATH, SHAKE_SHIELD_BREAK, SHAKE_DECAY, TOAST_DURATION } from "./config.js";
 import { refinedCollisionDetection, interpolate } from "./utils.js";
 import { Player } from "./player.js";
 import { Obstacle, ObstaclePreview } from "./obstacle.js";
@@ -6,41 +6,36 @@ import { Particle } from "./particle.js";
 import { Star } from "./star.js";
 import { achievements } from "./achievements.js";
 import { FrameMeter } from "./frameMeter.js";
+import { Sfx } from "./audio.js";
+import { drawHUD, drawStartMenu, drawPause, drawGameOver } from "./hud.js";
 
-const FONT_FAMILY = "Roboto, sans-serif";
+const MORPH_KEYS = { '1': 'circle', '2': 'square', '3': 'triangle' };
+const LOW_ENERGY_BEEP_INTERVAL = 0.5;
+const CLOSE_CALL_ENERGY = 0.1;
 
 export class Game {
   constructor(canvas, ctx) {
     this.canvas = canvas;
     this.ctx = ctx;
     this.state = GameStateEnum.START;
-    this.score = 0;
     this.highScore = parseInt(localStorage.getItem('highScore')) || 0;
-    this.isNewHighScore = false;
-    this.gameOverTimer = 0;
-    this.deathReason = '';
-    this.energy = 1;
-    this.spawnTimer = 0;
-    this.comboCount = 0;
-    this.comboTimer = 0;
-    this.shieldActive = false;
-    this.shieldTimer = 0;
     this.lastFrameTime = performance.now();
     this.keys = { left: false, right: false };
     this.frameMeter = new FrameMeter();
+    this.sfx = new Sfx();
 
-    this.runTime = 0;
-    this.shieldsCollected = 0;
     this.achievements = achievements;
     this.achievementState = JSON.parse(localStorage.getItem('achievements')) || {};
+    this.toasts = [];
+    this.shake = 0;
 
-    this.player = new Player(this);
     this.obstacles = [];
     this.obstaclePreviews = [];
     this.particles = [];
     this.stars = [];
     this.obstaclePool = [];
     this.particlePool = [];
+    this.resetRun();
 
     // Create starfield (speeds in px/s).
     const starCount = 50;
@@ -53,6 +48,34 @@ export class Game {
       ));
     }
     this.bindEvents();
+  }
+
+  // Per-run state, shared by the first run and every restart.
+  resetRun() {
+    this.score = 0;
+    this.isNewHighScore = false;
+    this.gameOverTimer = 0;
+    this.deathReason = '';
+    this.energy = 1;
+    this.spawnTimer = 0;
+    this.comboCount = 0;
+    this.comboTimer = 0;
+    this.shieldActive = false;
+    this.shieldTimer = 0;
+    this.runTime = 0;
+    this.hitStop = 0;
+    this.lowEnergyBeepTimer = 0;
+    this.catches = 0;
+    this.closeCalls = 0;
+    this.shieldsCollected = 0;
+    this.newAchievements = [];
+    // Return obstacles and particles to their pools.
+    this.obstacles.forEach(obs => this.returnObstacle(obs));
+    this.particles.forEach(p => this.returnParticle(p));
+    this.obstacles = [];
+    this.obstaclePreviews = [];
+    this.particles = [];
+    this.player = new Player(this);
   }
 
   // Object pooling methods
@@ -93,9 +116,15 @@ export class Game {
 
   bindEvents() {
     document.addEventListener('keydown', (e) => {
+      // Audio may only start after a user gesture.
+      this.sfx.unlock();
       if (e.code === 'Space') e.preventDefault();
       if (e.code === 'Backquote') {
         this.frameMeter.toggle();
+        return;
+      }
+      if (e.code === 'KeyM' && !e.repeat) {
+        this.sfx.toggleMute();
         return;
       }
       if (e.code === 'Escape') {
@@ -129,17 +158,11 @@ export class Game {
           this.keys.right = true;
           this.player.lastDirection = 1;
         }
-        if (e.key === '1' && this.player.shape !== 'circle') {
-          this.player.shape = 'circle';
+        const shape = MORPH_KEYS[e.key];
+        if (shape && this.player.shape !== shape) {
+          this.player.shape = shape;
           this.player.morphScale = 1.5;
-        }
-        if (e.key === '2' && this.player.shape !== 'square') {
-          this.player.shape = 'square';
-          this.player.morphScale = 1.5;
-        }
-        if (e.key === '3' && this.player.shape !== 'triangle') {
-          this.player.shape = 'triangle';
-          this.player.morphScale = 1.5;
+          this.sfx.morph();
         }
         if (freshSpace && !this.player.isDashing) {
           if (this.keys.left) {
@@ -152,6 +175,7 @@ export class Game {
           this.player.isDashing = true;
           this.player.dashTime = DASH_DURATION;
           this.createParticles(this.player.x, this.player.y, '#ffffff', 10);
+          this.sfx.dash();
         }
       }
     });
@@ -180,32 +204,21 @@ export class Game {
   }
 
   restart() {
+    this.resetRun();
     this.state = GameStateEnum.PLAYING;
-    this.score = 0;
-    this.isNewHighScore = false;
-    this.gameOverTimer = 0;
-    this.deathReason = '';
-    this.energy = 1;
-    this.spawnTimer = 0;
-    this.comboCount = 0;
-    this.comboTimer = 0;
-    this.shieldActive = false;
-    this.shieldTimer = 0;
-    this.runTime = 0;
-    this.shieldsCollected = 0;
-    // Return obstacles and particles to their pools.
-    this.obstacles.forEach(obs => this.returnObstacle(obs));
-    this.particles.forEach(p => this.returnParticle(p));
-    this.obstacles = [];
-    this.obstaclePreviews = [];
-    this.particles = [];
-    this.player = new Player(this);
   }
 
   endGame(reason) {
     this.state = GameStateEnum.GAMEOVER;
     this.deathReason = reason;
     this.gameOverTimer = 0;
+    this.shake = SHAKE_DEATH;
+    if (reason === 'Out of energy!') {
+      this.sfx.outOfEnergy();
+    } else {
+      this.sfx.wrongShape();
+      this.createParticles(this.player.x, this.player.y, SHAPE_COLORS[this.player.shape], 30);
+    }
     this.isNewHighScore = this.score > this.highScore;
     if (this.isNewHighScore) {
       this.highScore = this.score;
@@ -241,16 +254,50 @@ export class Game {
       refinedCollisionDetection({ x: x + offset, y, size, shape }, obs)
     );
   }
+
+  catchShape(obs) {
+    if (this.energy < CLOSE_CALL_ENERGY) this.closeCalls++;
+    this.score += 10 * this.getComboMultiplier();
+    this.energy = Math.min(1, this.energy + ENERGY_PER_CATCH);
+    this.sfx.catch(this.comboCount);
+    this.comboCount++;
+    this.comboTimer = 0;
+    this.catches++;
+    this.hitStop = HIT_STOP;
+    this.createParticles(obs.x, obs.y, SHAPE_COLORS[obs.shape], 14);
+  }
+
+  // Effects that keep animating in every state (shake settling after death,
+  // toasts fading out over the game-over screen, the menu starfield).
+  updateEffects(dt) {
+    this.shake *= Math.exp(-SHAKE_DECAY * dt);
+    if (this.shake < 0.3) this.shake = 0;
+    for (const toast of this.toasts) toast.age += dt;
+    this.toasts = this.toasts.filter(t => t.age < TOAST_DURATION);
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      let p = this.particles[i];
+      p.update(dt);
+      if (p.alpha <= 0) {
+        this.returnParticle(p);
+        this.particles.splice(i, 1);
+      }
+    }
+    if (this.state !== GameStateEnum.PAUSED) this.stars.forEach(s => s.update(dt));
+  }
+
   update(dt) {
+    if (this.state === GameStateEnum.PAUSED) return;
+    this.updateEffects(dt);
     if (this.state === GameStateEnum.GAMEOVER) {
       this.gameOverTimer += dt;
       return;
     }
-    if (this.state === GameStateEnum.START) {
-      this.stars.forEach(s => s.update(dt));
+    if (this.state !== GameStateEnum.PLAYING) return;
+    // A brief freeze after each catch gives it weight.
+    if (this.hitStop > 0) {
+      this.hitStop -= dt;
       return;
     }
-    if (this.state !== GameStateEnum.PLAYING) return;
     this.runTime += dt;
     this.player.update(dt, this.keys);
     const obstacleSpeed = this.getObstacleSpeed();
@@ -273,16 +320,14 @@ export class Game {
       if (!this.playerHits(obs)) continue;
       if (obs.type === 'normal') {
         if (this.player.shape === obs.shape) {
-          this.score += 10 * this.getComboMultiplier();
-          this.energy = Math.min(1, this.energy + ENERGY_PER_CATCH);
-          this.comboCount++;
-          this.comboTimer = 0;
-          this.createParticles(obs.x, obs.y, '#00ff00', 10);
+          this.catchShape(obs);
           obs.y = GAME_HEIGHT + 100;
         } else if (this.shieldActive) {
           this.shieldActive = false;
           this.shieldTimer = 0;
-          this.createParticles(obs.x, obs.y, '#ffff00', 10);
+          this.shake = SHAKE_SHIELD_BREAK;
+          this.sfx.shieldBreak();
+          this.createParticles(obs.x, obs.y, '#00ffff', 16);
           obs.y = GAME_HEIGHT + 100;
         } else {
           this.endGame('Wrong shape!');
@@ -292,6 +337,7 @@ export class Game {
         this.shieldsCollected++;
         this.shieldActive = true;
         this.shieldTimer = SHIELD_DURATION;
+        this.sfx.shieldUp();
         this.createParticles(obs.x, obs.y, '#00ffff', 15);
         obs.y = GAME_HEIGHT + 100;
       }
@@ -301,6 +347,15 @@ export class Game {
       this.energy = 0;
       this.endGame('Out of energy!');
       return;
+    }
+    if (this.energy < ENERGY_LOW) {
+      this.lowEnergyBeepTimer -= dt;
+      if (this.lowEnergyBeepTimer <= 0) {
+        this.sfx.lowEnergy();
+        this.lowEnergyBeepTimer = LOW_ENERGY_BEEP_INTERVAL;
+      }
+    } else {
+      this.lowEnergyBeepTimer = 0;
     }
     this.comboTimer += dt;
     if (this.comboTimer > COMBO_RESET_TIME) {
@@ -316,15 +371,6 @@ export class Game {
       this.spawnObstacle();
       this.spawnTimer = 0;
     }
-    for (let i = this.particles.length - 1; i >= 0; i--) {
-      let p = this.particles[i];
-      p.update(dt);
-      if (p.alpha <= 0) {
-        this.returnParticle(p);
-        this.particles.splice(i, 1);
-      }
-    }
-    this.stars.forEach(s => s.update(dt));
     this.checkAchievements();
   }
 
@@ -332,20 +378,24 @@ export class Game {
     this.achievements.forEach(ach => {
       if (this.achievementState[ach.id]) return;
       if (ach.condition(this)) {
-        this.unlockAchievement(ach.id);
+        this.unlockAchievement(ach);
       }
     });
   }
 
-  unlockAchievement(id) {
-    this.achievementState[id] = true;
+  unlockAchievement(ach) {
+    this.achievementState[ach.id] = true;
     localStorage.setItem('achievements', JSON.stringify(this.achievementState));
+    this.newAchievements.push(ach);
+    this.toasts.push({ title: ach.title, description: ach.description, age: 0 });
+    this.sfx.achievement();
   }
 
   spawnObstacle() {
     const size = 40;
     const x = Math.random() * (GAME_WIDTH - size) + size / 2;
-    const y = size / 2;
+    // Below the HUD strip so new shapes never appear on top of the score.
+    const y = HUD_HEIGHT + size / 2 + 6;
     if (Math.random() < 0.1) {
       this.obstaclePreviews.push(new ObstaclePreview(x, y, 30, 'powerup', 'star'));
     } else {
@@ -361,92 +411,27 @@ export class Game {
     this.stars.forEach(s => s.draw(this.ctx));
   }
   draw() {
+    const ctx = this.ctx;
+    this.drawBackground();
     if (this.state === GameStateEnum.START) {
-      this.drawStartMenu();
+      drawStartMenu(ctx);
       return;
     }
-    this.drawBackground();
-    this.obstaclePreviews.forEach(p => p.draw(this.ctx));
-    this.obstacles.forEach(obs => obs.draw(this.ctx));
-    this.player.draw(this.ctx, this.shieldActive);
-    this.particles.forEach(p => p.draw(this.ctx));
-    this.drawUI();
-    if (this.state === GameStateEnum.GAMEOVER) this.drawGameOver();
-    if (this.state === GameStateEnum.PAUSED) this.drawPause();
-  }
-  drawStartMenu() {
-    this.drawBackground();
-    this.ctx.fillStyle = '#fff';
-    this.ctx.textAlign = 'center';
-    this.ctx.textBaseline = 'middle';
-    this.ctx.font = `40px ${FONT_FAMILY}`;
-    this.ctx.fillText('Shape Escape', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 60);
-    this.ctx.font = `20px ${FONT_FAMILY}`;
-    this.ctx.fillText('Press Space to Start', GAME_WIDTH / 2, GAME_HEIGHT / 2);
-  }
-  drawGameOver() {
-    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    this.ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    this.ctx.fillStyle = '#fff';
-    this.ctx.textAlign = 'center';
-    this.ctx.textBaseline = 'middle';
-    this.ctx.font = `40px ${FONT_FAMILY}`;
-    this.ctx.fillText(this.deathReason, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40);
-    this.ctx.font = `20px ${FONT_FAMILY}`;
-    let endMessage = this.isNewHighScore ? "New High Score!" : "High Score: " + this.highScore;
-    this.ctx.fillText(endMessage, GAME_WIDTH / 2, GAME_HEIGHT / 2);
-    if (this.canRestart()) {
-      this.ctx.fillText('Press Space to Restart', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 40);
+    // The playfield shakes; the HUD and overlays stay put.
+    ctx.save();
+    if (this.shake > 0) {
+      ctx.translate((Math.random() - 0.5) * 2 * this.shake, (Math.random() - 0.5) * 2 * this.shake);
     }
-    const unlocked = this.achievements.filter(a => this.achievementState[a.id]);
-    if (unlocked.length > 0) {
-      this.ctx.fillText('Achievements:', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 80);
-      unlocked.forEach((a, i) => {
-        this.ctx.fillText(a.title, GAME_WIDTH / 2, GAME_HEIGHT / 2 + 110 + i * 25);
-      });
+    this.obstaclePreviews.forEach(p => p.draw(ctx));
+    this.obstacles.forEach(obs => obs.draw(ctx));
+    if (this.state !== GameStateEnum.GAMEOVER || this.deathReason !== 'Wrong shape!') {
+      this.player.draw(ctx, this.shieldActive);
     }
-  }
-  drawPause() {
-    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    this.ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    this.ctx.fillStyle = '#fff';
-    this.ctx.textAlign = 'center';
-    this.ctx.textBaseline = 'middle';
-    this.ctx.font = `40px ${FONT_FAMILY}`;
-    this.ctx.fillText('Paused', GAME_WIDTH / 2, GAME_HEIGHT / 2);
-  }
-  drawUI() {
-    this.ctx.fillStyle = '#fff';
-    this.ctx.font = `20px ${FONT_FAMILY}`;
-    this.ctx.textAlign = 'left';
-    this.ctx.textBaseline = 'top';
-    this.ctx.fillText('Score: ' + this.score, 10, 10);
-    this.ctx.fillText('High Score: ' + this.highScore, 10, 35);
-    if (this.comboCount > 1) {
-      this.ctx.fillText('Combo x' + this.getComboMultiplier(), 10, 60);
-    }
-    if (this.shieldActive) {
-      this.ctx.fillText('Shield: ' + Math.ceil(this.shieldTimer) + 's', GAME_WIDTH - 140, 10);
-    }
-    this.drawEnergyBar();
-  }
-  // Along the bottom edge, just under the player, where the eyes already are.
-  drawEnergyBar() {
-    const width = 300, height = 10;
-    const x = (GAME_WIDTH - width) / 2, y = GAME_HEIGHT - 20;
-    const low = this.energy < ENERGY_LOW;
-    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-    this.ctx.fillRect(x, y, width, height);
-    let color = '#2ecc71';
-    if (this.energy < 0.5) color = '#f1c40f';
-    if (low) color = '#e74c3c';
-    this.ctx.fillStyle = color;
-    // Pulse while low so it reads as a warning without looking away.
-    if (low && this.state === GameStateEnum.PLAYING) {
-      this.ctx.globalAlpha = 0.55 + 0.45 * Math.sin(performance.now() / 80);
-    }
-    this.ctx.fillRect(x, y, width * this.energy, height);
-    this.ctx.globalAlpha = 1;
+    this.particles.forEach(p => p.draw(ctx));
+    ctx.restore();
+    drawHUD(ctx, this);
+    if (this.state === GameStateEnum.GAMEOVER) drawGameOver(ctx, this);
+    if (this.state === GameStateEnum.PAUSED) drawPause(ctx);
   }
   // Starts the single animation loop. It runs for the life of the page and
   // every state (menu, playing, paused, game over) is handled inside it, so
