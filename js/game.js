@@ -1,5 +1,5 @@
-import { GAME_WIDTH, GAME_HEIGHT, MAX_DT, COMBO_RESET_TIME, SHIELD_DURATION, GameStateEnum, DASH_DURATION, RESTART_LOCKOUT, ENERGY_DRAIN, ENERGY_PER_CATCH, ENERGY_LOW, MAX_COMBO_MULTIPLIER, SPEED_CURVE, SHAPE_COLORS, HUD_HEIGHT, CATCH_POP, SHAKE_DEATH, SHAKE_SHIELD_BREAK, SHAKE_DECAY, TOAST_DURATION } from "./config.js";
-import { refinedCollisionDetection, interpolate } from "./utils.js";
+import { GAME_WIDTH, GAME_HEIGHT, MAX_DT, COMBO_RESET_TIME, SHIELD_DURATION, GameStateEnum, DASH_DURATION, RESTART_LOCKOUT, ENERGY_DRAIN, ENERGY_PER_CATCH, ENERGY_LOW, MAX_COMBO_MULTIPLIER, SHAPE_COLORS, CATCH_POP, SHAKE_DEATH, SHAKE_SHIELD_BREAK, SHAKE_DECAY, TOAST_DURATION } from "./config.js";
+import { refinedCollisionDetection } from "./utils.js";
 import { Player } from "./player.js";
 import { Obstacle, ObstaclePreview } from "./obstacle.js";
 import { Particle } from "./particle.js";
@@ -8,7 +8,7 @@ import { achievements } from "./achievements.js";
 import { FrameMeter } from "./frameMeter.js";
 import { FramePacer } from "./framePacer.js";
 import { Sfx } from "./audio.js";
-import { Spawner, SHAPE_SIZE, STAR_SIZE } from "./spawner.js";
+import { Spawner, SPAWN_Y, SHAPE_SIZE, STAR_SIZE, speedAt } from "./spawner.js";
 import { createRng, randomSeed } from "./random.js";
 import { todayKey, dailySeed, loadDailyBest, saveDailyBest, shareText } from "./daily.js";
 import { drawHUD, drawStartMenu, drawPause, drawGameOver } from "./hud.js";
@@ -54,7 +54,6 @@ export class Game {
     this.obstaclePreviews = [];
     this.particles = [];
     this.stars = [];
-    this.obstaclePool = [];
     this.particlePool = [];
     this.resetRun();
 
@@ -94,8 +93,7 @@ export class Game {
     // The daily challenge replays the same seed; normal runs get a fresh one.
     this.seed = this.mode === GameMode.DAILY ? dailySeed(this.dailyKey) : randomSeed();
     this.spawner = new Spawner(createRng(this.seed));
-    // Return obstacles and particles to their pools.
-    this.obstacles.forEach(obs => this.returnObstacle(obs));
+    // Return particles to their pool.
     this.particles.forEach(p => this.returnParticle(p));
     this.obstacles = [];
     this.obstaclePreviews = [];
@@ -103,23 +101,7 @@ export class Game {
     this.player = new Player(this);
   }
 
-  // Object pooling methods
-  getObstacle(x, y, size, type, shape) {
-    if (this.obstaclePool.length > 0) {
-      let obs = this.obstaclePool.pop();
-      obs.x = x;
-      obs.y = y;
-      obs.size = size;
-      obs.type = type;
-      obs.shape = shape;
-      return obs;
-    } else {
-      return new Obstacle(x, y, size, type, shape);
-    }
-  }
-  returnObstacle(obs) {
-    this.obstaclePool.push(obs);
-  }
+  // Particle pooling: bursts of particles are created and discarded constantly.
   getParticle(x, y, vx, vy, size, color) {
     if (this.particlePool.length > 0) {
       let p = this.particlePool.pop();
@@ -267,7 +249,7 @@ export class Game {
   }
 
   getObstacleSpeed() {
-    return interpolate(SPEED_CURVE, this.runTime);
+    return speedAt(this.runTime);
   }
   getComboMultiplier() {
     return Math.min(1 + this.comboCount, MAX_COMBO_MULTIPLIER);
@@ -309,10 +291,9 @@ export class Game {
   }
 
   // Shapes appear as a flashing preview just below the HUD, then fall.
-  addPreview({ x, shape, type }) {
+  addPreview({ x, shape, type, lateBy = 0 }) {
     const size = type === 'powerup' ? STAR_SIZE : SHAPE_SIZE;
-    const y = HUD_HEIGHT + SHAPE_SIZE / 2 + 6;
-    this.obstaclePreviews.push(new ObstaclePreview(x, y, size, type, shape));
+    this.obstaclePreviews.push(new ObstaclePreview(x, SPAWN_Y, size, type, shape, lateBy));
   }
 
   toast(title, description, label = 'Achievement') {
@@ -347,23 +328,24 @@ export class Game {
     if (this.state !== GameStateEnum.PLAYING) return;
     this.runTime += dt;
     this.player.update(dt, this.keys);
-    const obstacleSpeed = this.getObstacleSpeed();
-    this.spawner.update(dt, this.runTime, obstacleSpeed, (spawn) => this.addPreview(spawn));
+    // Falling shapes move, then finished previews are released, then new
+    // previews spawn, so each accounts for this frame's time exactly once and
+    // shapes reach the player on the beat.
+    for (let i = this.obstacles.length - 1; i >= 0; i--) {
+      let obs = this.obstacles[i];
+      obs.update(dt);
+      if (obs.y - obs.size / 2 > GAME_HEIGHT) this.obstacles.splice(i, 1);
+    }
     for (let i = this.obstaclePreviews.length - 1; i >= 0; i--) {
       let prev = this.obstaclePreviews[i];
       if (prev.update(dt)) {
-        this.obstacles.push(this.getObstacle(prev.x, prev.y, prev.size, prev.type, prev.shape));
+        const overshoot = prev.timer - prev.duration;
+        const speed = speedAt(this.runTime - overshoot);
+        this.obstacles.push(new Obstacle(prev.x, prev.y + overshoot * speed, prev.size, prev.type, prev.shape, speed));
         this.obstaclePreviews.splice(i, 1);
       }
     }
-    for (let i = this.obstacles.length - 1; i >= 0; i--) {
-      let obs = this.obstacles[i];
-      obs.update(dt, obstacleSpeed);
-      if (obs.y - obs.size / 2 > GAME_HEIGHT) {
-        this.returnObstacle(obs);
-        this.obstacles.splice(i, 1);
-      }
-    }
+    this.spawner.update(this.runTime, (spawn) => this.addPreview(spawn));
     for (const obs of this.obstacles) {
       if (!this.playerHits(obs)) continue;
       if (obs.type === 'normal') {

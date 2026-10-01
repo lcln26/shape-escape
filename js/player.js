@@ -1,11 +1,11 @@
-import { GAME_WIDTH, GAME_HEIGHT, MOVE_SPEED, DASH_SPEED, MORPH_SCALE_DECAY, DASH_DURATION, SHAPE_COLORS } from "./config.js";
+import { GAME_WIDTH, PLAYER_Y, MOVE_SPEED, DASH_SPEED, MORPH_SCALE_DECAY, DASH_DURATION, SHAPE_COLORS } from "./config.js";
 import { drawShape, drawShield } from "./utils.js";
 
 export class Player {
   constructor(game) {
     this.game = game;
     this.x = GAME_WIDTH / 2;
-    this.y = GAME_HEIGHT - 70;
+    this.y = PLAYER_Y;
     this.size = 50;
     this.shape = 'circle';
     this.morphScale = 1;

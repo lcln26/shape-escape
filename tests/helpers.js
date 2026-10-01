@@ -1,4 +1,5 @@
 import { Game } from '../js/game.js';
+import { Obstacle } from '../js/obstacle.js';
 
 // update() never draws, so a bare stub context is enough to drive the rules.
 export function makeGame() {
@@ -10,7 +11,7 @@ export function makeGame() {
 
 // Drops a shape (or the 'star' power-up) directly onto the player.
 export function placeOnPlayer(game, shape, type = 'normal') {
-  const obs = game.getObstacle(game.player.x, game.player.y, 40, type, shape);
+  const obs = new Obstacle(game.player.x, game.player.y, 40, type, shape, 0);
   game.obstacles.push(obs);
   return obs;
 }

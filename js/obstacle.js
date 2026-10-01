@@ -1,16 +1,19 @@
-import { SHAPE_COLORS } from "./config.js";
+import { SHAPE_COLORS, PREVIEW_DURATION } from "./config.js";
 import { drawShape } from "./utils.js";
 
+// Each falling shape keeps the speed it was released with, so the spawner
+// can time it to reach the player exactly on the beat.
 export class Obstacle {
-  constructor(x, y, size, type, shape) {
+  constructor(x, y, size, type, shape, speed) {
     this.x = x;
     this.y = y;
     this.size = size;
     this.type = type; // 'normal' or 'powerup'
     this.shape = shape;
+    this.speed = speed;
   }
-  update(dt, speed) {
-    this.y += speed * dt;
+  update(dt) {
+    this.y += this.speed * dt;
   }
   draw(ctx) {
     ctx.save();
@@ -37,14 +40,15 @@ function applyShapeStyle(ctx, shape, type, strokeOverride) {
 }
 
 export class ObstaclePreview {
-  constructor(x, y, size, type, shape) {
+  // startTime: how far into the preview to begin (catching up a late frame).
+  constructor(x, y, size, type, shape, startTime = 0) {
     this.x = x;
     this.y = y;
     this.size = size;
     this.type = type;
     this.shape = shape;
-    this.timer = 0;
-    this.duration = 1.0;
+    this.timer = startTime;
+    this.duration = PREVIEW_DURATION;
     this.alpha = 0;
   }
   update(dt) {

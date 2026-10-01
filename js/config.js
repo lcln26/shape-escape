@@ -1,5 +1,12 @@
 export const GAME_WIDTH = 800;
 export const GAME_HEIGHT = 600;
+export const PLAYER_Y = GAME_HEIGHT - 70;
+
+// Everything is timed to the soundtrack: shapes reach the player on the beat.
+export const BPM = 128;
+export const BEAT = 60 / BPM; // seconds
+// How long a shape shows as a flashing preview before it starts falling.
+export const PREVIEW_DURATION = 1.0;
 export const COMBO_RESET_TIME = 2.0;
 export const SHIELD_DURATION = 5.0;
 export const DASH_DURATION = 0.25;
@@ -14,7 +21,7 @@ export const RESTART_LOCKOUT = 0.75;
 // runs out, so dodging alone can't keep you alive. Values are fractions of a
 // full bar.
 export const ENERGY_DRAIN = 0.12; // per second, so a full bar lasts ~8s untouched
-export const ENERGY_PER_CATCH = 0.11;
+export const ENERGY_PER_CATCH = 0.10;
 export const ENERGY_LOW = 0.25;
 
 // Catch score is 10 x multiplier, where the multiplier grows with the combo.

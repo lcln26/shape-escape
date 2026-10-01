@@ -1,85 +1,120 @@
-import { GAME_WIDTH, SPEED_CURVE } from '../js/config.js';
-import { Spawner, PATTERNS, WALL_SPACING, SHAPE_SIZE } from '../js/spawner.js';
+import { BEAT, PLAYER_Y } from '../js/config.js';
+import { Spawner, PATTERNS, SHAPE_SIZE, MIN_X, MAX_X, REACH_SPEED, MIN_VERTICAL_GAP, speedAt } from '../js/spawner.js';
 import { createRng } from '../js/random.js';
-import { interpolate } from '../js/utils.js';
+import { makeGame } from './helpers.js';
 
-// Runs a spawner for `seconds` of game time and records what it emits.
-function record(seed, seconds, dt = 1 / 60) {
+// Runs a spawner for `seconds` and records every shape it plans.
+function plan(seed, seconds, dt = 1 / 120) {
   const spawner = new Spawner(createRng(seed));
-  const spawns = [];
-  for (let t = 0; t < seconds; t += dt) {
-    spawner.update(dt, t, interpolate(SPEED_CURVE, t), (s) => spawns.push({ t, ...s }));
-  }
-  return spawns;
+  const planned = [];
+  const add = spawner.add.bind(spawner);
+  spawner.add = (arrival, x, shape, type) => {
+    planned.push({ arrival, x, shape, type: type || 'normal' });
+    add(arrival, x, shape, type);
+  };
+  const emitted = [];
+  for (let t = 0; t < seconds; t += dt) spawner.update(t, (s) => emitted.push(s));
+  return { planned, emitted };
 }
 
-test('the same seed produces the same spawns', () => {
-  expect(record(1234, 120)).toEqual(record(1234, 120));
+const shapesOnly = (planned) => planned.filter(p => p.type === 'normal').sort((a, b) => a.arrival - b.arrival);
+
+test('the same seed produces the same run', () => {
+  expect(plan(1234, 120)).toEqual(plan(1234, 120));
 });
 
-test('different seeds produce different spawns', () => {
-  expect(record(1, 60)).not.toEqual(record(2, 60));
+test('different seeds produce different runs', () => {
+  expect(plan(1, 60).planned).not.toEqual(plan(2, 60).planned);
 });
 
-test('every spawn is on screen', () => {
-  for (const s of record(99, 300)) {
-    expect(s.x).toBeGreaterThanOrEqual(SHAPE_SIZE / 2);
-    expect(s.x).toBeLessThanOrEqual(GAME_WIDTH - SHAPE_SIZE / 2);
+test('every shape is on screen', () => {
+  for (const p of plan(99, 300).planned) {
+    expect(p.x).toBeGreaterThanOrEqual(MIN_X - 1e-9);
+    expect(p.x).toBeLessThanOrEqual(MAX_X + 1e-9);
+  }
+});
+
+// The core fairness rule: with perfect play you can catch every shape, so
+// no two shapes arrive at once and each is reachable from the one before
+// without dashing.
+test.each([1, 2, 3, 4, 5, 6, 7, 8])('every shape is reachable from the previous one (seed %i)', (seed) => {
+  const shapes = shapesOnly(plan(seed, 300).planned);
+  for (let i = 1; i < shapes.length; i++) {
+    const dt = shapes[i].arrival - shapes[i - 1].arrival;
+    expect(dt).toBeGreaterThan(0);
+    expect(Math.abs(shapes[i].x - shapes[i - 1].x)).toBeLessThanOrEqual(REACH_SPEED * dt + 1e-6);
+  }
+});
+
+test('shapes arrive on the half-beat grid', () => {
+  for (const s of shapesOnly(plan(3, 200).planned)) {
+    const halfBeats = s.arrival / (BEAT / 2);
+    expect(Math.abs(halfBeats - Math.round(halfBeats))).toBeLessThan(1e-6);
+  }
+});
+
+test('shapes in the same column never overlap', () => {
+  const shapes = shapesOnly(plan(11, 300).planned);
+  for (let i = 0; i < shapes.length; i++) {
+    for (let j = i + 1; j < shapes.length && shapes[j].arrival - shapes[i].arrival < 2; j++) {
+      if (Math.abs(shapes[j].x - shapes[i].x) >= SHAPE_SIZE * 1.3) continue;
+      const gap = (shapes[j].arrival - shapes[i].arrival) * speedAt(shapes[i].arrival);
+      expect(gap).toBeGreaterThanOrEqual(MIN_VERTICAL_GAP - 1e-6);
+    }
   }
 });
 
 // Stars used to take the place of a shape, leaving fewer shapes to catch.
-test('shield stars come on their own timer and keep shape spawns steady', () => {
-  const spawns = record(7, 120);
-  const stars = spawns.filter(s => s.type === 'powerup');
-  const shapes = spawns.filter(s => s.type === 'normal');
+test('shield stars come on their own timer, in addition to shapes', () => {
+  const { planned } = plan(7, 120);
+  const stars = planned.filter(p => p.type === 'powerup');
   expect(stars.length).toBeGreaterThanOrEqual(120 / 14 - 1);
   expect(stars.length).toBeLessThanOrEqual(120 / 8 + 1);
   expect(stars.every(s => s.shape === 'star')).toBe(true);
-  expect(shapes.every(s => ['circle', 'square', 'triangle'].includes(s.shape))).toBe(true);
 });
 
-test('patterns only appear once unlocked', () => {
+test.each(PATTERNS.map(p => [p.name, p]))('%s is catchable at every speed', (_, pattern) => {
   const rng = createRng(5);
-  for (const pattern of PATTERNS) {
-    const events = pattern.build({ rng, speed: 300 });
+  for (const speed of [180, 320, 470, 650]) {
+    const events = [...pattern.build({ rng, speed })].sort((a, b) => a.beat - b.beat);
     expect(events.length).toBeGreaterThan(1);
-  }
-  // Nothing but streams and singles before 10s: spawns before then come
-  // either one at a time or as a same-shape, same-column stream.
-  for (let seed = 1; seed <= 50; seed++) {
-    const early = record(seed, 10).filter(s => s.type === 'normal');
-    const byTime = new Map();
-    early.forEach(s => byTime.set(s.t, [...(byTime.get(s.t) || []), s]));
-    for (const group of byTime.values()) expect(group.length).toBe(1);
-  }
-});
-
-// The player is at least 50px wide (a square); slipping through a wall needs
-// a gap at least that wide between neighbouring shapes.
-test('a wall spans the screen with gaps too narrow to slip through', () => {
-  const wall = PATTERNS.find(p => p.name === 'wall');
-  const events = wall.build({ rng: createRng(3), speed: 300 });
-  expect(events).toHaveLength(Math.round(GAME_WIDTH / WALL_SPACING));
-  expect(events.every(e => e.delay === 0)).toBe(true);
-  const xs = events.map(e => e.x).sort((a, b) => a - b);
-  for (let i = 1; i < xs.length; i++) expect(xs[i] - xs[i - 1] - SHAPE_SIZE).toBeLessThan(50);
-  expect(xs[0]).toBeLessThan(50);
-  expect(GAME_WIDTH - xs[xs.length - 1]).toBeLessThan(50);
-  // Every wall offers more than one shape to choose from.
-  expect(new Set(events.map(e => e.shape)).size).toBeGreaterThan(1);
-});
-
-test('shapes in a single column never overlap at any speed', () => {
-  const rng = createRng(11);
-  for (const name of ['stream', 'alternating']) {
-    const pattern = PATTERNS.find(p => p.name === name);
-    for (const speed of [180, 400, 650]) {
-      const events = pattern.build({ rng, speed });
-      for (let i = 1; i < events.length; i++) {
-        const verticalGap = (events[i].delay - events[i - 1].delay) * speed;
-        expect(verticalGap).toBeGreaterThanOrEqual(SHAPE_SIZE * 1.1 + 20);
-      }
+    for (let i = 1; i < events.length; i++) {
+      const dt = (events[i].beat - events[i - 1].beat) * BEAT;
+      expect(dt).toBeGreaterThan(0);
+      expect(Math.abs(events[i].x - events[i - 1].x)).toBeLessThanOrEqual(REACH_SPEED * dt + 1e-6);
     }
   }
+});
+
+// Through the real game: each shape touches the player at its planned time,
+// within one frame, so catches land on the beat.
+test('shapes reach the player on their planned beat', () => {
+  const game = makeGame();
+  game.endGame = () => {};
+  game.player.x = -1000; // out of the way so nothing gets caught
+  const planned = [];
+  const add = game.spawner.add.bind(game.spawner);
+  game.spawner.add = (arrival, x, shape, type) => {
+    planned.push({ arrival, x });
+    add(arrival, x, shape, type);
+  };
+  const contactY = PLAYER_Y - 45;
+  const dt = 1 / 120;
+  const seen = new Set();
+  const errors = [];
+  for (let i = 0; i < 120 * 40; i++) {
+    game.energy = 1;
+    game.update(dt);
+    for (const obs of game.obstacles) {
+      if (obs.type !== 'normal' || seen.has(obs) || obs.y < contactY) continue;
+      seen.add(obs);
+      // Time it actually crossed the contact line, interpolated within the frame.
+      const crossed = game.runTime - (obs.y - contactY) / obs.speed;
+      // Streams put several shapes in one column, so match on time too.
+      const error = Math.min(...planned.filter(p => Math.abs(p.x - obs.x) < 1e-6).map(p => Math.abs(crossed - p.arrival)));
+      errors.push(error);
+    }
+  }
+  expect(errors.length).toBeGreaterThan(30);
+  expect(Math.max(...errors)).toBeLessThan(dt);
 });
