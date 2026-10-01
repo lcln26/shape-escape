@@ -6,6 +6,7 @@ import { Particle } from "./particle.js";
 import { Star } from "./star.js";
 import { achievements } from "./achievements.js";
 import { FrameMeter } from "./frameMeter.js";
+import { FramePacer } from "./framePacer.js";
 import { Sfx } from "./audio.js";
 import { Spawner, SHAPE_SIZE, STAR_SIZE } from "./spawner.js";
 import { createRng, randomSeed } from "./random.js";
@@ -13,6 +14,7 @@ import { todayKey, dailySeed, loadDailyBest, saveDailyBest, shareText } from "./
 import { drawHUD, drawStartMenu, drawPause, drawGameOver } from "./hud.js";
 
 const LOW_ENERGY_BEEP_INTERVAL = 0.5;
+const BACKGROUND_COLOR = '#191919'; // midpoint of the CSS gradient (#111 → #222)
 const CLOSE_CALL_ENERGY = 0.1;
 
 export const GameMode = {
@@ -24,9 +26,12 @@ export const GameMode = {
 // touch.js) drives it through the action methods: setMove, morph, dash,
 // confirm, startRun, togglePause, toMenu and copyResult.
 export class Game {
-  constructor(canvas, ctx) {
+  // opaque: the canvas was created with { alpha: false }, so draw a solid
+  // background instead of clearing to transparent.
+  constructor(canvas, ctx, { opaque = false } = {}) {
     this.canvas = canvas;
     this.ctx = ctx;
+    this.opaque = opaque;
     this.state = GameStateEnum.START;
     this.mode = GameMode.NORMAL;
     this.highScore = parseInt(localStorage.getItem('highScore')) || 0;
@@ -35,6 +40,7 @@ export class Game {
     this.lastFrameTime = performance.now();
     this.keys = { left: false, right: false };
     this.frameMeter = new FrameMeter();
+    this.framePacer = new FramePacer(MAX_DT);
     this.sfx = new Sfx();
     // Set by touch.js so screens show tap prompts instead of key prompts.
     this.touch = false;
@@ -433,10 +439,15 @@ export class Game {
 
   // ---- Drawing ----
 
-  // The gradient behind the stars is the canvas's CSS background (styles.css),
-  // which is far cheaper than filling every pixel each frame.
+  // Transparent canvases show the CSS gradient behind them (styles.css);
+  // opaque ones get a solid fill, which is about as cheap as a clear.
   drawBackground() {
-    this.ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    if (this.opaque) {
+      this.ctx.fillStyle = BACKGROUND_COLOR;
+      this.ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    } else {
+      this.ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    }
     this.stars.forEach(s => s.draw(this.ctx));
   }
   draw() {
@@ -471,7 +482,9 @@ export class Game {
   }
   gameLoop(currentTime) {
     const gapMs = currentTime - this.lastFrameTime;
-    const dt = Math.min(Math.max(gapMs / 1000, 0), MAX_DT);
+    // The meter tracks the display's refresh interval, which the pacer uses
+    // to smooth over the occasional late frame.
+    const dt = this.framePacer.step(gapMs / 1000, this.frameMeter.interval / 1000);
     this.lastFrameTime = currentTime;
     const workStart = performance.now();
     this.update(dt);

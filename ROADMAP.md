@@ -80,7 +80,22 @@ Result in the same harness: ~5.3ms → ~0.3ms per frame at 1600×1200.
 - [x] Remove hit-stop
 - [x] Frame meter now shows **slow** (frames that missed a refresh), **max work** (slowest single frame of game code) and a graph of the last 240 frame gaps, so outside delays can be told apart from game delays
 - [x] Baseline page `tools/framepace.html`: an almost empty animation with the same meter. If it spikes like the game, the cause is outside the game.
-- [ ] Play-test: does it still feel laggy without hit-stop? Compare the meter in the game and on `tools/framepace.html`.
+- [x] Play-test: the baseline page spiked too, so the cause is outside the game.
+
+## Stutter, round 3: browsers ✅
+
+`tools/framepace.html` now benchmarks the real game with a simulated player under several setups and saves results through the dev server (`scripts/serve.py`, `POST /__bench` → `.bench/`), so it can be run in real browsers on the real display. Results on the dev Mac (120Hz, 30s per run):
+
+| Browser | Game: dropped frames | Empty page: dropped frames | Notes |
+| --- | --- | --- | --- |
+| Firefox | 0 (three runs) | 5 | smoothest |
+| Chrome | 1 | 2 | |
+| Safari | 6 | 5 | capped at 60fps; one 281ms stall |
+
+- The game isn't the problem: in every browser the empty page drops frames about as often as the game, and the game's own code never took more than 5ms in a frame.
+- An opaque canvas and a 1× resolution made no difference in Firefox, so rendering stays as it is (`Game` has an `opaque` option if that ever changes).
+- [x] **Frame smoothing** (`js/framePacer.js`): after a late frame, the game catches up over the next few frames (at most 1.5× a normal step each) instead of jumping all at once. A 25ms hitch at 120Hz becomes four 12.5ms steps instead of one 25ms leap. Tests in `tests/framePacer.test.js`.
+- [ ] Not yet tested: sound actually playing in Firefox. Browsers keep audio off until you click, so the automated runs were silent. To test, open `tools/framepace.html?configs=5&seconds=30` in Firefox and click **Run benchmark**. If that drops frames and the silent run doesn't, rework `js/audio.js` to pre-render each sound once instead of creating new audio objects per sound.
 
 ## Phase 2: make catching matter ✅
 

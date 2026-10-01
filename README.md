@@ -54,18 +54,16 @@ The game uses JavaScript modules, which Chrome and other browsers refuse to load
    git clone https://github.com/lcln26/shape-escape.git
    cd shape-escape
    ```
-2. Start a local server (either works):
+2. Start the dev server:
    ```bash
-   python3 -m http.server 8000
+   npm start
    ```
-   ```bash
-   npx serve -l 8000
-   ```
+   (That runs `python3 scripts/serve.py`, which also turns off caching so code changes show up on reload. Any static server works too, e.g. `python3 -m http.server 8000`.)
 3. Open **http://localhost:8000** in your browser.
 
 If you change the code while a plain `http.server` is running, hard-refresh (Cmd+Shift+R / Ctrl+Shift+R) so the browser doesn't reuse old files.
 
-Press the **`** (backtick) key in game to toggle a frame meter: frame rate, the worst gap between frames, how many frames missed a refresh (**slow**), the slowest single frame of game code (**max work**), and a graph of recent frames. If frames are slow while max work stays small, the delay is outside the game; compare with the baseline at **http://localhost:8000/tools/framepace.html**.
+Press the **`** (backtick) key in game to toggle a frame meter: frame rate, the worst gap between frames, how many frames missed a refresh (**slow**), the slowest single frame of game code (**max work**), and a graph of recent frames. If frames are slow while max work stays small, the delay is outside the game; **http://localhost:8000/tools/framepace.html** benchmarks the game against an empty page in whatever browser you open it in.
 
 See [ROADMAP.md](ROADMAP.md) for known issues and planned improvements.
 
