@@ -16,6 +16,10 @@ export function bindKeyboard(game) {
       game.sfx.toggleMute();
       return;
     }
+    if (e.code === 'KeyN' && !e.repeat) {
+      game.sfx.toggleMusic();
+      return;
+    }
     if (e.code === 'Escape') {
       if (game.state === GameStateEnum.GAMEOVER) game.toMenu();
       else game.togglePause();

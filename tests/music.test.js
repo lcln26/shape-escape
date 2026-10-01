@@ -1,4 +1,6 @@
-import { BAR, STEPS_PER_BAR, LAYER_TIMES, layerAt, stepEvents, catchNote, chordAt } from '../js/music.js';
+import { BAR, STEPS_PER_BAR, LAYER_TIMES, SCALE, MELODY, layerAt, stepEvents, catchNote } from '../js/music.js';
+
+const inScale = (note) => SCALE.includes(((note % 12) + 12) % 12);
 
 const instrumentsIn = (layers) => {
   const names = new Set();
@@ -6,35 +8,45 @@ const instrumentsIn = (layers) => {
   return [...names].sort();
 };
 
+// The rule that keeps catches from clashing with the music.
+test('every note in the soundtrack and every catch note is in the scale', () => {
+  for (let layers = 1; layers <= LAYER_TIMES.length; layers++) {
+    for (let step = 0; step < STEPS_PER_BAR * 8; step++) {
+      for (const e of stepEvents(step, layers)) if (e.note !== undefined) expect(inScale(e.note)).toBe(true);
+    }
+  }
+  for (let t = 0; t < BAR * 8; t += BAR / 2) {
+    for (let combo = 0; combo < 12; combo++) expect(inScale(catchNote(t, combo))).toBe(true);
+  }
+});
+
+test('catch notes stay in a comfortable range (A4 to D6)', () => {
+  for (let t = 0; t < BAR * 4; t += BAR) {
+    for (let combo = 0; combo < 20; combo++) {
+      const note = catchNote(t, combo);
+      expect(note).toBeGreaterThanOrEqual(69);
+      expect(note).toBeLessThanOrEqual(86);
+    }
+  }
+});
+
+test('a streak climbs, then holds at the top', () => {
+  const notes = Array.from({ length: 12 }, (_, combo) => catchNote(0, combo));
+  for (let i = 1; i < notes.length; i++) expect(notes[i]).toBeGreaterThanOrEqual(notes[i - 1]);
+  expect(notes[notes.length - 1]).toBe(MELODY[MELODY.length - 1]);
+});
+
 test('layers join on bar lines, never mid-bar', () => {
   expect(layerAt(0)).toBe(1);
-  for (const start of LAYER_TIMES.slice(1)) {
+  LAYER_TIMES.slice(1).forEach((start, i) => {
     const firstBar = Math.ceil(start / BAR - 1e-9) * BAR;
-    const index = LAYER_TIMES.indexOf(start) + 1;
-    expect(layerAt(firstBar - 0.01)).toBe(index - 1);
-    expect(layerAt(firstBar + 0.01)).toBe(index);
-  }
+    expect(layerAt(firstBar - 0.01)).toBe(i + 1);
+    expect(layerAt(firstBar + 0.01)).toBe(i + 2);
+  });
 });
 
-test('each layer adds an instrument', () => {
-  expect(instrumentsIn(1)).toEqual(['hat', 'kick']);
-  expect(instrumentsIn(2)).toEqual(['bass', 'hat', 'kick']);
-  expect(instrumentsIn(3)).toEqual(['bass', 'clap', 'hat', 'kick']);
-  expect(instrumentsIn(4)).toEqual(['arp', 'bass', 'clap', 'hat', 'kick']);
-  expect(instrumentsIn(5)).toEqual(['arp', 'bass', 'clap', 'hat', 'kick', 'pad']);
-});
-
-test('the kick lands on every beat', () => {
-  for (let step = 0; step < STEPS_PER_BAR; step++) {
-    const hasKick = stepEvents(step, 1).some(e => e.instrument === 'kick');
-    expect(hasKick).toBe(step % 4 === 0);
-  }
-});
-
-test('catch notes climb with the combo and stay in the current chord', () => {
-  const t = 0;
-  const notes = Array.from({ length: 9 }, (_, combo) => catchNote(t, combo));
-  for (let i = 1; i < notes.length; i++) expect(notes[i]).toBeGreaterThan(notes[i - 1]);
-  const pitchClasses = new Set(chordAt(t).tones.map(n => n % 12));
-  notes.forEach(n => expect(pitchClasses.has(n % 12)).toBe(true));
+test('the opening is calm and the layers build gently', () => {
+  expect(instrumentsIn(1)).toEqual(['bass', 'pad']);
+  expect(instrumentsIn(2)).toEqual(['bass', 'kick', 'pad']);
+  expect(instrumentsIn(3)).toEqual(['bass', 'kick', 'pad', 'shaker']);
 });

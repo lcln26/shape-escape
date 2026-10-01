@@ -1,57 +1,64 @@
 import { BEAT } from "./config.js";
 
-// The soundtrack: a 128 BPM loop in A minor (Am - F - C - G, one bar each)
-// that adds a layer at each of LAYER_TIMES, so the music builds as the run
-// gets harder. Pure data and functions here; js/audio.js plays it.
+// The soundtrack is a calm, warm bed; the player's catches are the melody.
+// Every pitch in the game (chords, bass and catch notes) comes from one
+// pentatonic scale, so any catch sounds right over any chord. Pure data and
+// functions here; js/audio.js plays them.
 
 export const STEP = BEAT / 4; // sixteenth note
 export const STEPS_PER_BAR = 16;
 export const BAR = STEP * STEPS_PER_BAR;
 
-// Run time (s) at which each layer joins, applied from the next bar line:
-// 0 kick + hats, 1 bass, 2 claps, 3 arpeggio, 4 pads.
-export const LAYER_TIMES = [0, 15, 30, 45, 75];
+// A minor pentatonic (= C major pentatonic): A C D E G.
+export const SCALE = [9, 0, 2, 4, 7]; // pitch classes
 
-// MIDI note numbers. Chord tones sit around A3; bass roots around A1.
-const CHORDS = [
-  { root: 33, tones: [57, 60, 64] }, // Am
-  { root: 29, tones: [53, 57, 60] }, // F
-  { root: 36, tones: [48, 52, 55] }, // C
-  { root: 31, tones: [55, 59, 62] }, // G
+// Four-bar progression, all built from scale notes only. MIDI numbers:
+// bass around A1-D2, pad voicings around A3.
+const PROGRESSION = [
+  { bass: 33, pad: [57, 60, 64, 67] }, // Am7      A C E G
+  { bass: 36, pad: [55, 60, 64, 69] }, // C6       G C E A
+  { bass: 38, pad: [57, 62, 67, 72] }, // D7sus4   A D G C
+  { bass: 31, pad: [55, 62, 64, 69] }, // Gsus     G D E A
 ];
 
-// Number of layers playing at run time t (changes only on bar lines).
+// Run time (s) when each layer joins, applied from the next bar line. The
+// opening is just pads and a soft low pulse; it builds gently from there.
+//   1 pads + bass on beats 1 and 3   2 soft kick on every beat
+//   3 shaker on the off-beats         4 bass moves to eighth notes
+export const LAYER_TIMES = [0, 20, 40, 70];
+
 export function layerAt(t) {
   const barStart = Math.floor(t / BAR + 1e-9) * BAR;
   return LAYER_TIMES.filter(start => barStart >= start).length;
 }
 
 export function chordAt(t) {
-  return CHORDS[Math.floor(t / BAR + 1e-9) % CHORDS.length];
+  return PROGRESSION[Math.floor(t / BAR + 1e-9) % PROGRESSION.length];
 }
 
-// Catch sounds climb through the current chord as the combo grows, so a
-// streak plays an ascending arpeggio in key with the music.
+// The catch melody: scale notes from A4 up to D6, so it never gets shrill.
+export const MELODY = [69, 72, 74, 76, 79, 81, 84, 86];
+
+// A streak climbs the scale one note per catch; a fresh catch starts on the
+// scale note nearest the current chord's root, so phrases follow the chords.
 export function catchNote(t, comboCount) {
-  const { tones } = chordAt(t);
-  const i = Math.min(comboCount, 8);
-  return tones[i % 3] + 12 * (1 + Math.floor(i / 3));
+  const rootClass = chordAt(t).bass % 12;
+  const start = MELODY.findIndex(n => n % 12 === rootClass);
+  return MELODY[Math.min(Math.max(start, 0) + comboCount, MELODY.length - 1)];
 }
 
-// The notes to play on sixteenth `step` with `layers` layers active, as
+// The notes for sixteenth `step` with `layers` layers active, as
 // { instrument, note } (note only for pitched instruments).
 export function stepEvents(step, layers) {
   const s = step % STEPS_PER_BAR;
-  const { root, tones } = CHORDS[Math.floor(step / STEPS_PER_BAR) % CHORDS.length];
+  const chord = PROGRESSION[Math.floor(step / STEPS_PER_BAR) % PROGRESSION.length];
   const events = [];
-  if (s % 4 === 0) events.push({ instrument: 'kick' });
-  if (s % 4 === 2) events.push({ instrument: 'hat' });
-  if (layers >= 2 && s % 4 === 2) events.push({ instrument: 'bass', note: s === 14 ? root + 12 : root });
-  if (layers >= 3 && (s === 4 || s === 12)) events.push({ instrument: 'clap' });
-  if (layers >= 4 && s % 2 === 0) {
-    const order = [0, 1, 2, 1];
-    events.push({ instrument: 'arp', note: tones[order[(s / 2) % 4]] + 12 * (s >= 8 ? 1 : 0) });
+  if (s === 0) chord.pad.forEach(note => events.push({ instrument: 'pad', note }));
+  const bassOnEighths = layers >= 4;
+  if (s === 0 || s === 8 || (bassOnEighths && s % 2 === 0)) {
+    events.push({ instrument: 'bass', note: chord.bass + (bassOnEighths && s % 4 === 2 ? 12 : 0) });
   }
-  if (layers >= 5 && s === 0) tones.forEach(note => events.push({ instrument: 'pad', note }));
+  if (layers >= 2 && s % 4 === 0) events.push({ instrument: 'kick' });
+  if (layers >= 3 && s % 4 === 2) events.push({ instrument: 'shaker' });
   return events;
 }

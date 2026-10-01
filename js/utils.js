@@ -11,6 +11,68 @@ function getScaledSize(size, shape) {
   return size * (SHAPE_SCALES[shape] || 1);
 }
 
+// ---- Morphing ----
+// Each shape's outline as OUTLINE_POINTS points spaced evenly along its
+// perimeter, starting at the top and going clockwise, so any two outlines
+// can be blended point by point to morph one shape into another.
+const OUTLINE_POINTS = 48;
+const outlineCache = new Map();
+
+function polygonOutline(vertices, n) {
+  const edges = vertices.map((a, i) => {
+    const b = vertices[(i + 1) % vertices.length];
+    return { a, b, length: Math.hypot(b.x - a.x, b.y - a.y) };
+  });
+  const perimeter = edges.reduce((sum, e) => sum + e.length, 0);
+  const points = [];
+  let edge = 0, walked = 0;
+  for (let i = 0; i < n; i++) {
+    const target = (i / n) * perimeter;
+    while (walked + edges[edge].length < target) walked += edges[edge++].length;
+    const { a, b, length } = edges[edge];
+    const t = (target - walked) / length;
+    points.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+  }
+  return points;
+}
+
+export function shapeOutline(shape, size) {
+  const key = `${shape}:${size}`;
+  if (outlineCache.has(key)) return outlineCache.get(key);
+  const half = getScaledSize(size, shape) / 2;
+  let points;
+  if (shape === 'circle') {
+    points = Array.from({ length: OUTLINE_POINTS }, (_, i) => {
+      const angle = -Math.PI / 2 + (i / OUTLINE_POINTS) * Math.PI * 2;
+      return { x: Math.cos(angle) * half, y: Math.sin(angle) * half };
+    });
+  } else if (shape === 'square') {
+    points = polygonOutline([{ x: 0, y: -half }, { x: half, y: -half }, { x: half, y: half }, { x: -half, y: half }, { x: -half, y: -half }], OUTLINE_POINTS);
+  } else {
+    points = polygonOutline([{ x: 0, y: -half }, { x: half, y: half }, { x: -half, y: half }], OUTLINE_POINTS);
+  }
+  outlineCache.set(key, points);
+  return points;
+}
+
+export function blendOutlines(from, to, t) {
+  return from.map((p, i) => ({ x: p.x + (to[i].x - p.x) * t, y: p.y + (to[i].y - p.y) * t }));
+}
+
+// Blends two #rrggbb colours.
+export function mixColor(a, b, t) {
+  const channel = (hex, i) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+  const mixed = [0, 1, 2].map(i => Math.round(channel(a, i) + (channel(b, i) - channel(a, i)) * t));
+  return `#${mixed.map(v => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+export function traceOutline(ctx, points) {
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+  ctx.closePath();
+}
+
 // Piecewise-linear lookup in [x, y] keyframes sorted by x, clamped at both ends.
 export function interpolate(curve, x) {
   if (x <= curve[0][0]) return curve[0][1];

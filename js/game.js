@@ -1,5 +1,5 @@
 import { GAME_WIDTH, GAME_HEIGHT, MAX_DT, COMBO_RESET_TIME, SHIELD_DURATION, GameStateEnum, DASH_DURATION, RESTART_LOCKOUT, ENERGY_DRAIN, ENERGY_PER_CATCH, ENERGY_LOW, MAX_COMBO_MULTIPLIER, SHAPE_COLORS, CATCH_POP, BEAT, SHAKE_DEATH, SHAKE_SHIELD_BREAK, SHAKE_DECAY, TOAST_DURATION } from "./config.js";
-import { refinedCollisionDetection } from "./utils.js";
+import { refinedCollisionDetection, shapeOutline, traceOutline } from "./utils.js";
 import { Player } from "./player.js";
 import { Obstacle, ObstaclePreview } from "./obstacle.js";
 import { Particle } from "./particle.js";
@@ -17,7 +17,8 @@ import { drawHUD, drawStartMenu, drawPause, drawGameOver } from "./hud.js";
 const LOW_ENERGY_BEEP_INTERVAL = 0.5;
 const BACKGROUND_COLOR = '#191919'; // midpoint of the CSS gradient (#111 → #222)
 // Background hue for each music layer: the colour shifts at every drop.
-const LAYER_HUES = [220, 265, 305, 340, 25];
+const LAYER_HUES = [220, 250, 280, 310];
+const RIPPLE_TIME = 0.45;
 const CLOSE_CALL_ENERGY = 0.1;
 
 export const GameMode = {
@@ -39,7 +40,6 @@ export class Game {
     this.effects = { glow: true, beatFlash: true };
     this.state = GameStateEnum.START;
     this.mode = GameMode.NORMAL;
-    this.attempt = 0;
     this.highScore = parseInt(localStorage.getItem('highScore')) || 0;
     this.dailyKey = todayKey();
     this.dailyBest = loadDailyBest(this.dailyKey);
@@ -95,7 +95,7 @@ export class Game {
     this.shieldsCollected = 0;
     this.newAchievements = [];
     this.layer = 1;
-    this.dropFlash = 0;
+    this.ripples = [];
     this.setHue(LAYER_HUES[0]);
     this.keys.left = false;
     this.keys.right = false;
@@ -140,8 +140,7 @@ export class Game {
 
   morph(shape) {
     if (this.state !== GameStateEnum.PLAYING || this.player.shape === shape) return;
-    this.player.shape = shape;
-    this.player.morphScale = 1.5;
+    this.player.morphTo(shape);
     this.sfx.morph();
   }
 
@@ -184,7 +183,6 @@ export class Game {
     this.dailyKey = todayKey();
     this.dailyBest = loadDailyBest(this.dailyKey);
     this.resetRun();
-    this.attempt = this.countAttempt();
     this.state = GameStateEnum.PLAYING;
     this.sfx.resume();
     this.sfx.startMusic();
@@ -214,18 +212,6 @@ export class Game {
     this.sfx.resume();
     this.resetRun();
     this.state = GameStateEnum.START;
-  }
-
-  // Attempts are counted per mode (and per day for the daily challenge).
-  countAttempt() {
-    const key = this.mode === GameMode.DAILY ? `attempts:daily:${this.dailyKey}` : 'attempts:normal';
-    try {
-      const n = (parseInt(localStorage.getItem(key)) || 0) + 1;
-      localStorage.setItem(key, n);
-      return n;
-    } catch {
-      return 1;
-    }
   }
 
   // 0-1, peaking on each beat of the music (and breathing at the same tempo
@@ -325,7 +311,7 @@ export class Game {
     if (this.energy < CLOSE_CALL_ENERGY) this.closeCalls++;
     this.score += 10 * this.getComboMultiplier();
     this.energy = Math.min(1, this.energy + ENERGY_PER_CATCH);
-    this.sfx.catch(this.comboCount, this.runTime);
+    this.sfx.catch(this.comboCount, this.runTime, obs.shape, obs.x);
     this.comboCount++;
     this.comboTimer = 0;
     this.bestMultiplier = Math.max(this.bestMultiplier, this.getComboMultiplier());
@@ -334,7 +320,8 @@ export class Game {
     // A quick pop instead of a freeze: freezing on every catch felt like lag
     // during fast streams.
     this.player.morphScale = Math.max(this.player.morphScale, CATCH_POP);
-    this.createParticles(obs.x, obs.y, SHAPE_COLORS[obs.shape], 14);
+    this.createParticles(obs.x, obs.y, SHAPE_COLORS[obs.shape], 10);
+    this.ripples.push({ x: obs.x, y: obs.y, shape: obs.shape, color: SHAPE_COLORS[obs.shape], age: 0 });
   }
 
   // Shapes appear as a flashing preview just below the HUD, then fall.
@@ -352,7 +339,8 @@ export class Game {
   updateEffects(dt) {
     this.shake *= Math.exp(-SHAKE_DECAY * dt);
     if (this.shake < 0.3) this.shake = 0;
-    this.dropFlash = Math.max(0, this.dropFlash - dt * 2.5);
+    for (const ripple of this.ripples) ripple.age += dt;
+    this.ripples = this.ripples.filter(r => r.age < RIPPLE_TIME);
     for (const toast of this.toasts) toast.age += dt;
     this.toasts = this.toasts.filter(t => t.age < TOAST_DURATION);
     for (let i = this.particles.length - 1; i >= 0; i--) {
@@ -378,12 +366,10 @@ export class Game {
     if (this.state !== GameStateEnum.PLAYING) return;
     this.runTime += dt;
     this.sfx.updateMusic(this.runTime);
-    // A new music layer is a drop: flash, shake and shift the colours.
+    // As the music builds, the background colour shifts and the stars speed up.
     const layer = layerAt(this.runTime);
     if (layer > this.layer) {
       this.layer = layer;
-      this.dropFlash = 1;
-      this.shake = Math.max(this.shake, 5);
       this.setHue(LAYER_HUES[Math.min(layer, LAYER_HUES.length) - 1]);
     }
     this.player.update(dt, this.keys);
@@ -431,6 +417,7 @@ export class Game {
         this.shieldTimer = SHIELD_DURATION;
         this.sfx.shieldUp();
         this.createParticles(obs.x, obs.y, '#00ffff', 15);
+        this.ripples.push({ x: obs.x, y: obs.y, shape: 'circle', color: '#00ffff', age: 0 });
         obs.y = GAME_HEIGHT + 100;
       }
     }
@@ -480,6 +467,23 @@ export class Game {
 
   // ---- Drawing ----
 
+  // A caught shape's outline expanding and fading in its colour, as if
+  // absorbed into the player.
+  drawRipple({ x, y, shape, color, age }) {
+    const ctx = this.ctx;
+    const p = age / RIPPLE_TIME;
+    const scale = 1 + 1.6 * (1 - Math.pow(1 - p, 2));
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    traceOutline(ctx, shapeOutline(shape, SHAPE_SIZE));
+    ctx.lineWidth = 3 / scale;
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.9 * (1 - p);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // Transparent canvases show the CSS gradient behind them (styles.css);
   // opaque ones get a solid fill, which is about as cheap as a clear.
   drawBackground(pulse) {
@@ -491,7 +495,7 @@ export class Game {
       ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     }
     // Once the bass is in, the whole background thumps with the kick.
-    const flash = this.effects.beatFlash && this.layer >= 2 && this.state === GameStateEnum.PLAYING ? 0.07 * pulse : 0;
+    const flash = this.effects.beatFlash && this.layer >= 2 && this.state === GameStateEnum.PLAYING ? 0.035 * pulse : 0;
     if (flash > 0.004) {
       ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${flash})`;
       ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
@@ -517,12 +521,9 @@ export class Game {
     if (this.state !== GameStateEnum.GAMEOVER || this.deathReason !== 'Wrong shape!') {
       this.player.draw(ctx, this.shieldActive, pulse, glow);
     }
+    this.ripples.forEach(r => this.drawRipple(r));
     this.particles.forEach(p => p.draw(ctx));
     ctx.restore();
-    if (this.dropFlash > 0) {
-      ctx.fillStyle = `rgba(255, 255, 255, ${0.35 * this.dropFlash})`;
-      ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    }
     drawHUD(ctx, this, pulse);
     if (this.state === GameStateEnum.GAMEOVER) drawGameOver(ctx, this);
     if (this.state === GameStateEnum.PAUSED) drawPause(ctx, this);

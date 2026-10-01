@@ -1,5 +1,9 @@
 import { GAME_WIDTH, PLAYER_Y, MOVE_SPEED, DASH_SPEED, MORPH_SCALE_DECAY, DASH_DURATION, SHAPE_COLORS } from "./config.js";
-import { drawShape, drawShield, drawGlow } from "./utils.js";
+import { drawShield, shapeOutline, blendOutlines, traceOutline, mixColor } from "./utils.js";
+
+// How long the visible morph between shapes takes. Gameplay switches shape
+// instantly; only the drawing blends.
+const MORPH_TIME = 0.12;
 
 export class Player {
   constructor(game) {
@@ -9,13 +13,44 @@ export class Player {
     this.size = 50;
     this.shape = 'circle';
     this.morphScale = 1;
+    this.morphFrom = null;
+    this.morphT = MORPH_TIME;
     this.isDashing = false;
     this.dashTime = 0;
     this.dashDirection = 0;
     this.lastDirection = 1;
   }
   
+  // Switches shape now (for catching and collisions) and starts the visible
+  // morph from whatever outline is on screen, even mid-morph.
+  morphTo(shape) {
+    this.morphFrom = this.outline();
+    this.morphFromColor = this.color();
+    this.shape = shape;
+    this.morphT = 0;
+    this.morphScale = 1.12;
+  }
+
+  // 0 at the start of a morph, 1 once it's finished (eased).
+  morphProgress() {
+    if (!this.morphFrom || this.morphT >= MORPH_TIME) return 1;
+    return 1 - Math.pow(1 - this.morphT / MORPH_TIME, 3);
+  }
+
+  // The outline and colour to draw: the current shape's, or a blend while morphing.
+  outline() {
+    const target = shapeOutline(this.shape, this.size);
+    const t = this.morphProgress();
+    return t >= 1 ? target : blendOutlines(this.morphFrom, target, t);
+  }
+
+  color() {
+    const t = this.morphProgress();
+    return t >= 1 ? SHAPE_COLORS[this.shape] : mixColor(this.morphFromColor, SHAPE_COLORS[this.shape], t);
+  }
+
   update(dt, keys) {
+  this.morphT += dt;
   if (this.isDashing) {
     this.x += DASH_SPEED * this.dashDirection * dt;
     this.dashTime -= dt;
@@ -56,11 +91,20 @@ export class Player {
       ctx.save();
       ctx.translate(this.x + offset, this.y);
       ctx.scale(this.morphScale, this.morphScale);
-      if (glow) drawGlow(ctx, this.shape, this.size, SHAPE_COLORS[this.shape], 12 + 14 * pulse);
-      ctx.fillStyle = SHAPE_COLORS[this.shape];
+      const color = this.color();
+      traceOutline(ctx, this.outline());
+      if (glow) {
+        ctx.lineWidth = 12 + 14 * pulse;
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = 0.22;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      ctx.fillStyle = color;
       ctx.lineWidth = 3;
       ctx.strokeStyle = '#fff';
-      drawShape(ctx, this.shape, this.size);
+      ctx.fill();
+      ctx.stroke();
       if (shieldActive) {
         drawShield(ctx, this.shape, this.size, 6);
       }

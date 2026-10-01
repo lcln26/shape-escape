@@ -26,7 +26,9 @@ function actionsFor(game) {
     case GameStateEnum.PLAYING:
       return [['Pause', () => game.pause()]];
     case GameStateEnum.PAUSED:
-      return [['Resume', () => game.togglePause()], ['Menu', () => game.toMenu()]];
+      return [['Resume', () => game.togglePause()], ['Menu', () => game.toMenu()],
+        [game.sfx.musicMuted ? 'Music: off' : 'Music: on', () => game.sfx.toggleMusic()],
+        [game.sfx.muted ? 'Sound: off' : 'Sound: on', () => game.sfx.toggleMute()]];
     case GameStateEnum.GAMEOVER: {
       if (!game.canRestart()) return [];
       const buttons = [['Retry', () => game.confirm()], ['Menu', () => game.toMenu()]];
@@ -101,7 +103,7 @@ export function setupTouch(game) {
   // Keep the contextual buttons and the selected shape in sync with the game.
   let renderedKey = '';
   function sync() {
-    const key = `${game.state}|${game.mode}|${game.state === GameStateEnum.GAMEOVER && game.canRestart()}`;
+    const key = `${game.state}|${game.mode}|${game.state === GameStateEnum.GAMEOVER && game.canRestart()}|${game.sfx.muted}|${game.sfx.musicMuted}`;
     if (key !== renderedKey) {
       renderedKey = key;
       actionsEl.replaceChildren(...actionsFor(game).map(([label, action]) => {

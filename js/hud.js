@@ -42,6 +42,7 @@ export function drawHUD(ctx, game, pulse = 0) {
   const right = [];
   if (game.shieldActive) right.push({ str: `Shield ${Math.ceil(game.shieldTimer)}s`, color: '#00ffff' });
   if (game.sfx.muted) right.push({ str: 'Muted (M)', color: '#777' });
+  else if (game.sfx.musicMuted) right.push({ str: 'Music off (N)', color: '#777' });
   let x = GAME_WIDTH - 12;
   ctx.font = `400 20px ${FONT_FAMILY}`;
   for (const item of right) {
@@ -51,15 +52,6 @@ export function drawHUD(ctx, game, pulse = 0) {
 
   drawEnergyBar(ctx, game);
   drawToasts(ctx, game);
-  drawAttempt(ctx, game);
-}
-
-// "Attempt 12" across the middle as a run starts, fading out.
-function drawAttempt(ctx, game) {
-  if (!game.attempt || game.state !== GameStateEnum.PLAYING || game.runTime > 2) return;
-  ctx.globalAlpha = Math.min(1, (2 - game.runTime) / 0.6);
-  text(ctx, `Attempt ${game.attempt}`, GAME_WIDTH / 2, GAME_HEIGHT * 0.42, { size: 46, weight: 700 });
-  ctx.globalAlpha = 1;
 }
 
 // Along the bottom edge, just under the player, where the eyes already are.
@@ -129,7 +121,7 @@ export function drawPause(ctx, game) {
   dim(ctx, 0.5);
   text(ctx, 'Paused', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 10, { size: 40, weight: 500 });
   if (!game.touch) {
-    text(ctx, 'Esc to resume · M to mute', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 30, { size: 16, color: '#ccc' });
+    text(ctx, 'Esc to resume · M to mute · N for music on/off', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 30, { size: 16, color: '#ccc' });
   }
 }
 

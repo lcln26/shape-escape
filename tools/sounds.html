@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shape Escape sound check</title>
+    <style>
+        body { margin: 0; background: #111; color: #f2f2f2; font: 15px/1.5 system-ui, sans-serif; padding: 24px 16px; }
+        main { max-width: 760px; margin: 0 auto; }
+        h1 { font-weight: 600; margin: 0 0 4px; }
+        h2 { font-weight: 600; margin: 28px 0 8px; font-size: 18px; }
+        p { color: #bbb; margin: 6px 0 12px; }
+        .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+        .label { width: 110px; color: #ddd; }
+        button { font: inherit; color: #f2f2f2; background: #222; border: 1px solid #555; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+        button:hover { border-color: #aaa; }
+        button.on { background: #2b4a2b; border-color: #6c6; }
+        .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+        #status { color: #F0E442; min-height: 1.5em; }
+    </style>
+</head>
+
+<body>
+    <main>
+        <h1>Sound check</h1>
+        <p>Every sound in the game, playable on its own. The first click turns audio on. If something sounds off, say
+            which button and what's wrong ("marimba too clicky", "music too quiet", "streak sounds random").</p>
+        <p id="status">Click anything to start audio.</p>
+
+        <h2>Shape voices</h2>
+        <p>Each shape sings with its own voice when you catch it. Notes are from one five-note scale, A4 up to D6.</p>
+        <div id="voices"></div>
+
+        <h2>Music</h2>
+        <p>The soundtrack at each stage of a run. Turn on "catches" to hear simulated catches on the beat, the way
+            they'd sound mid-run.</p>
+        <div class="row" id="music"></div>
+        <div class="row"><button id="catches">Catches: off</button> <button id="stop">Stop music</button></div>
+
+        <h2>Effects</h2>
+        <div class="row" id="effects"></div>
+    </main>
+    <script type="module">
+        import { Sfx, SHAPE_VOICES } from '../js/audio.js';
+        import { MELODY, LAYER_TIMES, BAR, catchNote } from '../js/music.js';
+        import { SHAPE_COLORS, BEAT } from '../js/config.js';
+
+        // Keep this page's settings from touching the game's saved ones.
+        Storage.prototype.setItem = () => {};
+        Storage.prototype.getItem = () => null;
+
+        const sfx = new Sfx();
+        const status = document.getElementById('status');
+
+        async function ready() {
+            sfx.unlock();
+            for (let i = 0; i < 200 && !sfx.samples; i++) await new Promise(r => setTimeout(r, 25));
+            status.textContent = sfx.samples ? 'Audio on.' : 'Audio failed to load.';
+            return !!sfx.samples;
+        }
+
+        function button(parent, label, onClick) {
+            const b = document.createElement('button');
+            b.textContent = label;
+            b.addEventListener('click', async () => { if (await ready()) onClick(b); });
+            parent.appendChild(b);
+            return b;
+        }
+
+        const noteNames = { 69: 'A4', 72: 'C5', 74: 'D5', 76: 'E5', 79: 'G5', 81: 'A5', 84: 'C6', 86: 'D6' };
+        const voices = document.getElementById('voices');
+        for (const [shape, voice] of Object.entries(SHAPE_VOICES)) {
+            const row = document.createElement('div');
+            row.className = 'row';
+            row.innerHTML = `<span class="label"><span class="swatch" style="background:${SHAPE_COLORS[shape]}"></span>${shape} · ${voice}</span>`;
+            for (const note of MELODY) button(row, noteNames[note], () => sfx.play(`${voice}:${note}`, { bus: 'voice' }));
+            button(row, 'Streak ▶', () => {
+                const t0 = sfx.ctx.currentTime;
+                MELODY.forEach((note, i) => sfx.play(`${voice}:${note}`, { when: t0 + i * BEAT / 2, bus: 'voice' }));
+            });
+            voices.appendChild(row);
+        }
+
+        // Music: drive the real scheduler from the audio clock, starting at a
+        // run time inside the chosen stage.
+        const stages = ['Opening: pads + bass', '+ soft kick', '+ shaker', '+ busier bass'];
+        let start = null, offset = 0, catchesOn = false, nextCatch = 0, combo = 0;
+        const shapes = ['circle', 'square', 'triangle'];
+        function tick() {
+            if (start === null) return;
+            const t = sfx.ctx.currentTime - start + offset;
+            sfx.updateMusic(t);
+            // A catch on every beat, cycling shapes, with a streak that resets every two bars.
+            const beat = Math.ceil(t / BEAT);
+            if (catchesOn && beat * BEAT - t < 0.1 && beat > nextCatch) {
+                nextCatch = beat;
+                const shape = shapes[Math.floor(Math.random() * 3)];
+                combo = beat % 8 === 0 ? 0 : combo + 1;
+                sfx.play(`${SHAPE_VOICES[shape]}:${catchNote(beat * BEAT, combo)}`, { when: (sfx.songStart ?? start - offset) + beat * BEAT, bus: 'voice', pan: (Math.random() * 2 - 1) * 0.6 });
+            }
+            requestAnimationFrame(tick);
+        }
+        const musicRow = document.getElementById('music');
+        const stageButtons = stages.map((name, i) => button(musicRow, name, (b) => {
+            stageButtons.forEach(x => x.classList.remove('on'));
+            b.classList.add('on');
+            offset = Math.ceil(LAYER_TIMES[i] / BAR) * BAR;
+            sfx.startMusic();
+            start = sfx.ctx.currentTime + 0.05;
+            nextCatch = Math.ceil(offset / BEAT);
+            requestAnimationFrame(tick);
+        }));
+        document.getElementById('catches').addEventListener('click', async (e) => {
+            if (!(await ready())) return;
+            catchesOn = !catchesOn;
+            e.target.textContent = `Catches: ${catchesOn ? 'on' : 'off'}`;
+            e.target.classList.toggle('on', catchesOn);
+        });
+        document.getElementById('stop').addEventListener('click', async () => {
+            if (!(await ready())) return;
+            sfx.stopMusic();
+            start = null;
+            stageButtons.forEach(x => x.classList.remove('on'));
+        });
+
+        const effects = document.getElementById('effects');
+        const effectNames = {
+            morph: 'Morph', dash: 'Dash', shieldUp: 'Shield up', shieldBreak: 'Shield break',
+            wrongShape: 'Wrong shape', outOfEnergy: 'Out of energy', lowEnergy: 'Low energy', achievement: 'Achievement',
+        };
+        for (const [key, label] of Object.entries(effectNames)) button(effects, label, () => sfx.play(key));
+    </script>
+</body>
+
+</html>
