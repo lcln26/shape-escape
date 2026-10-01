@@ -47,6 +47,9 @@
             { name: '1x, opaque', scale: 1, opaque: true },
             { name: 'empty page (2x)', scale: 2, opaque: false, empty: true },
             { name: 'current + sound', scale: 2, opaque: false, sound: true },
+            { name: 'no beat flash', scale: 2, opaque: false, effects: { beatFlash: false } },
+            { name: 'no glow', scale: 2, opaque: false, effects: { glow: false } },
+            { name: 'no glow, no beat flash', scale: 2, opaque: false, effects: { glow: false, beatFlash: false } },
         ];
 
         const selected = params.get('configs') ? params.get('configs').split(',').map(Number).map(i => CONFIGS[i]) : CONFIGS;
@@ -81,6 +84,7 @@
                 const { canvas, ctx } = makeCanvas(config);
                 const game = new Game(canvas, ctx, { opaque: config.opaque });
                 game.startRun('normal');
+                Object.assign(game.effects, config.effects || {});
                 game.endGame = () => {};
                 game.runTime = 60; // late enough for every pattern
                 // Sound only plays once audio is unlocked; browsers may keep it
@@ -139,6 +143,8 @@
                 p99GapMs: +q(sorted, 0.99).toFixed(1),
                 worstGapMs: +sorted[sorted.length - 1].toFixed(1),
                 maxWorkMs: +workSorted[workSorted.length - 1].toFixed(2),
+                meanWorkMs: +(work.reduce((a, b) => a + b, 0) / work.length).toFixed(3),
+                p95WorkMs: +q(workSorted, 0.95).toFixed(2),
             };
         }
 

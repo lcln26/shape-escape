@@ -1,5 +1,5 @@
 import { GAME_WIDTH, PLAYER_Y, MOVE_SPEED, DASH_SPEED, MORPH_SCALE_DECAY, DASH_DURATION, SHAPE_COLORS } from "./config.js";
-import { drawShape, drawShield } from "./utils.js";
+import { drawShape, drawShield, drawGlow } from "./utils.js";
 
 export class Player {
   constructor(game) {
@@ -50,11 +50,13 @@ export class Player {
     return offsets;
   }
 
-  draw(ctx, shieldActive) {
+  // pulse: 0-1, peaks on each beat.
+  draw(ctx, shieldActive, pulse = 0, glow = true) {
     for (const offset of this.getWrapOffsets()) {
       ctx.save();
       ctx.translate(this.x + offset, this.y);
       ctx.scale(this.morphScale, this.morphScale);
+      if (glow) drawGlow(ctx, this.shape, this.size, SHAPE_COLORS[this.shape], 12 + 14 * pulse);
       ctx.fillStyle = SHAPE_COLORS[this.shape];
       ctx.lineWidth = 3;
       ctx.strokeStyle = '#fff';

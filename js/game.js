@@ -1,4 +1,4 @@
-import { GAME_WIDTH, GAME_HEIGHT, MAX_DT, COMBO_RESET_TIME, SHIELD_DURATION, GameStateEnum, DASH_DURATION, RESTART_LOCKOUT, ENERGY_DRAIN, ENERGY_PER_CATCH, ENERGY_LOW, MAX_COMBO_MULTIPLIER, SHAPE_COLORS, CATCH_POP, SHAKE_DEATH, SHAKE_SHIELD_BREAK, SHAKE_DECAY, TOAST_DURATION } from "./config.js";
+import { GAME_WIDTH, GAME_HEIGHT, MAX_DT, COMBO_RESET_TIME, SHIELD_DURATION, GameStateEnum, DASH_DURATION, RESTART_LOCKOUT, ENERGY_DRAIN, ENERGY_PER_CATCH, ENERGY_LOW, MAX_COMBO_MULTIPLIER, SHAPE_COLORS, CATCH_POP, BEAT, SHAKE_DEATH, SHAKE_SHIELD_BREAK, SHAKE_DECAY, TOAST_DURATION } from "./config.js";
 import { refinedCollisionDetection } from "./utils.js";
 import { Player } from "./player.js";
 import { Obstacle, ObstaclePreview } from "./obstacle.js";
@@ -8,6 +8,7 @@ import { achievements } from "./achievements.js";
 import { FrameMeter } from "./frameMeter.js";
 import { FramePacer } from "./framePacer.js";
 import { Sfx } from "./audio.js";
+import { layerAt } from "./music.js";
 import { Spawner, SPAWN_Y, SHAPE_SIZE, STAR_SIZE, speedAt } from "./spawner.js";
 import { createRng, randomSeed } from "./random.js";
 import { todayKey, dailySeed, loadDailyBest, saveDailyBest, shareText } from "./daily.js";
@@ -15,6 +16,8 @@ import { drawHUD, drawStartMenu, drawPause, drawGameOver } from "./hud.js";
 
 const LOW_ENERGY_BEEP_INTERVAL = 0.5;
 const BACKGROUND_COLOR = '#191919'; // midpoint of the CSS gradient (#111 → #222)
+// Background hue for each music layer: the colour shifts at every drop.
+const LAYER_HUES = [220, 265, 305, 340, 25];
 const CLOSE_CALL_ENERGY = 0.1;
 
 export const GameMode = {
@@ -32,8 +35,11 @@ export class Game {
     this.canvas = canvas;
     this.ctx = ctx;
     this.opaque = opaque;
+    // Visual effects that can be switched off (used by tools/framepace.html to measure their cost).
+    this.effects = { glow: true, beatFlash: true };
     this.state = GameStateEnum.START;
     this.mode = GameMode.NORMAL;
+    this.attempt = 0;
     this.highScore = parseInt(localStorage.getItem('highScore')) || 0;
     this.dailyKey = todayKey();
     this.dailyBest = loadDailyBest(this.dailyKey);
@@ -88,6 +94,9 @@ export class Game {
     this.closeCalls = 0;
     this.shieldsCollected = 0;
     this.newAchievements = [];
+    this.layer = 1;
+    this.dropFlash = 0;
+    this.setHue(LAYER_HUES[0]);
     this.keys.left = false;
     this.keys.right = false;
     // The daily challenge replays the same seed; normal runs get a fresh one.
@@ -175,6 +184,7 @@ export class Game {
     this.dailyKey = todayKey();
     this.dailyBest = loadDailyBest(this.dailyKey);
     this.resetRun();
+    this.attempt = this.countAttempt();
     this.state = GameStateEnum.PLAYING;
     this.sfx.resume();
     this.sfx.startMusic();
@@ -204,6 +214,32 @@ export class Game {
     this.sfx.resume();
     this.resetRun();
     this.state = GameStateEnum.START;
+  }
+
+  // Attempts are counted per mode (and per day for the daily challenge).
+  countAttempt() {
+    const key = this.mode === GameMode.DAILY ? `attempts:daily:${this.dailyKey}` : 'attempts:normal';
+    try {
+      const n = (parseInt(localStorage.getItem(key)) || 0) + 1;
+      localStorage.setItem(key, n);
+      return n;
+    } catch {
+      return 1;
+    }
+  }
+
+  // 0-1, peaking on each beat of the music (and breathing at the same tempo
+  // on the menu, where no run is playing).
+  beatPulse() {
+    const t = this.state === GameStateEnum.START ? performance.now() / 1000 : this.runTime;
+    const phase = (t / BEAT) % 1;
+    return Math.pow(1 - phase, 4);
+  }
+
+  setHue(hue) {
+    this.hue = hue;
+    // The canvas background gradient is CSS, tinted by this variable.
+    if (this.canvas.style) this.canvas.style.setProperty('--hue', hue);
   }
 
   // Copies the daily challenge result to the clipboard for sharing.
@@ -316,6 +352,7 @@ export class Game {
   updateEffects(dt) {
     this.shake *= Math.exp(-SHAKE_DECAY * dt);
     if (this.shake < 0.3) this.shake = 0;
+    this.dropFlash = Math.max(0, this.dropFlash - dt * 2.5);
     for (const toast of this.toasts) toast.age += dt;
     this.toasts = this.toasts.filter(t => t.age < TOAST_DURATION);
     for (let i = this.particles.length - 1; i >= 0; i--) {
@@ -326,7 +363,9 @@ export class Game {
         this.particles.splice(i, 1);
       }
     }
-    this.stars.forEach(s => s.update(dt));
+    // Stars rush faster as the music builds.
+    const starSpeed = 1 + (this.layer - 1) * 0.6;
+    this.stars.forEach(s => s.update(dt, starSpeed));
   }
 
   update(dt) {
@@ -339,6 +378,14 @@ export class Game {
     if (this.state !== GameStateEnum.PLAYING) return;
     this.runTime += dt;
     this.sfx.updateMusic(this.runTime);
+    // A new music layer is a drop: flash, shake and shift the colours.
+    const layer = layerAt(this.runTime);
+    if (layer > this.layer) {
+      this.layer = layer;
+      this.dropFlash = 1;
+      this.shake = Math.max(this.shake, 5);
+      this.setHue(LAYER_HUES[Math.min(layer, LAYER_HUES.length) - 1]);
+    }
     this.player.update(dt, this.keys);
     // Falling shapes move, then finished previews are released, then new
     // previews spawn, so each accounts for this frame's time exactly once and
@@ -435,20 +482,28 @@ export class Game {
 
   // Transparent canvases show the CSS gradient behind them (styles.css);
   // opaque ones get a solid fill, which is about as cheap as a clear.
-  drawBackground() {
+  drawBackground(pulse) {
+    const ctx = this.ctx;
     if (this.opaque) {
-      this.ctx.fillStyle = BACKGROUND_COLOR;
-      this.ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+      ctx.fillStyle = BACKGROUND_COLOR;
+      ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     } else {
-      this.ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+      ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     }
-    this.stars.forEach(s => s.draw(this.ctx));
+    // Once the bass is in, the whole background thumps with the kick.
+    const flash = this.effects.beatFlash && this.layer >= 2 && this.state === GameStateEnum.PLAYING ? 0.07 * pulse : 0;
+    if (flash > 0.004) {
+      ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${flash})`;
+      ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    }
+    this.stars.forEach(s => s.draw(ctx, pulse));
   }
   draw() {
     const ctx = this.ctx;
-    this.drawBackground();
+    const pulse = this.state === GameStateEnum.PLAYING || this.state === GameStateEnum.START ? this.beatPulse() : 0;
+    this.drawBackground(pulse);
     if (this.state === GameStateEnum.START) {
-      drawStartMenu(ctx, this);
+      drawStartMenu(ctx, this, pulse);
       return;
     }
     // The playfield shakes; the HUD and overlays stay put.
@@ -457,13 +512,18 @@ export class Game {
       ctx.translate((Math.random() - 0.5) * 2 * this.shake, (Math.random() - 0.5) * 2 * this.shake);
     }
     this.obstaclePreviews.forEach(p => p.draw(ctx));
-    this.obstacles.forEach(obs => obs.draw(ctx));
+    const glow = this.effects.glow;
+    this.obstacles.forEach(obs => obs.draw(ctx, pulse, glow));
     if (this.state !== GameStateEnum.GAMEOVER || this.deathReason !== 'Wrong shape!') {
-      this.player.draw(ctx, this.shieldActive);
+      this.player.draw(ctx, this.shieldActive, pulse, glow);
     }
     this.particles.forEach(p => p.draw(ctx));
     ctx.restore();
-    drawHUD(ctx, this);
+    if (this.dropFlash > 0) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.35 * this.dropFlash})`;
+      ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    }
+    drawHUD(ctx, this, pulse);
     if (this.state === GameStateEnum.GAMEOVER) drawGameOver(ctx, this);
     if (this.state === GameStateEnum.PAUSED) drawPause(ctx, this);
   }

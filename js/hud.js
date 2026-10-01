@@ -20,7 +20,7 @@ function dim(ctx, alpha) {
   ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 }
 
-export function drawHUD(ctx, game) {
+export function drawHUD(ctx, game, pulse = 0) {
   ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
   ctx.fillRect(0, 0, GAME_WIDTH, HUD_HEIGHT);
   ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
@@ -36,7 +36,7 @@ export function drawHUD(ctx, game) {
 
   const multiplier = game.getComboMultiplier();
   if (multiplier > 1) {
-    text(ctx, `x${multiplier}`, GAME_WIDTH / 2, mid, { size: 18 + multiplier * 2, color: '#F0E442', weight: 700 });
+    text(ctx, `x${multiplier}`, GAME_WIDTH / 2, mid, { size: 18 + multiplier * 2 + 6 * pulse, color: '#F0E442', weight: 700 });
   }
 
   const right = [];
@@ -51,6 +51,15 @@ export function drawHUD(ctx, game) {
 
   drawEnergyBar(ctx, game);
   drawToasts(ctx, game);
+  drawAttempt(ctx, game);
+}
+
+// "Attempt 12" across the middle as a run starts, fading out.
+function drawAttempt(ctx, game) {
+  if (!game.attempt || game.state !== GameStateEnum.PLAYING || game.runTime > 2) return;
+  ctx.globalAlpha = Math.min(1, (2 - game.runTime) / 0.6);
+  text(ctx, `Attempt ${game.attempt}`, GAME_WIDTH / 2, GAME_HEIGHT * 0.42, { size: 46, weight: 700 });
+  ctx.globalAlpha = 1;
 }
 
 // Along the bottom edge, just under the player, where the eyes already are.
@@ -87,9 +96,9 @@ function drawToasts(ctx, game) {
   ctx.globalAlpha = 1;
 }
 
-export function drawStartMenu(ctx, game) {
+export function drawStartMenu(ctx, game, pulse = 0) {
   const cx = GAME_WIDTH / 2, cy = GAME_HEIGHT / 2;
-  text(ctx, 'Shape Escape', cx, cy - 130, { size: 48, weight: 500 });
+  text(ctx, 'Shape Escape', cx, cy - 130, { size: 48 + 4 * pulse, weight: 700 });
   text(ctx, 'Catch shapes that match you. Dodge the rest.', cx, cy - 70, { size: 18, color: '#ccc' });
   text(ctx, 'Every catch refills your energy — run out and it\'s over.', cx, cy - 44, { size: 18, color: '#ccc' });
 

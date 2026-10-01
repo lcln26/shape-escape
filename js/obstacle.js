@@ -1,5 +1,5 @@
 import { SHAPE_COLORS, PREVIEW_DURATION } from "./config.js";
-import { drawShape } from "./utils.js";
+import { drawShape, drawGlow } from "./utils.js";
 
 // Each falling shape keeps the speed it was released with, so the spawner
 // can time it to reach the player exactly on the beat.
@@ -15,9 +15,11 @@ export class Obstacle {
   update(dt) {
     this.y += this.speed * dt;
   }
-  draw(ctx) {
+  // pulse: 0-1, peaks on each beat.
+  draw(ctx, pulse = 0, glow = true) {
     ctx.save();
     ctx.translate(this.x, this.y);
+    if (glow) drawGlow(ctx, this.shape, this.size, SHAPE_COLORS[this.shape], 8 + 8 * pulse);
     applyShapeStyle(ctx, this.shape, this.type, '');
     drawShape(ctx, this.shape, this.size);
     ctx.restore();

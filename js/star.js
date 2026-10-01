@@ -7,18 +7,18 @@ export class Star {
     this.size = size;
     this.speed = speed;
   }
-  update(dt) {
-    this.y += this.speed * dt;
+  update(dt, speedScale = 1) {
+    this.y += this.speed * speedScale * dt;
     if (this.y > GAME_HEIGHT) {
       this.y = 0;
       this.x = Math.random() * GAME_WIDTH;
     }
   }
-  draw(ctx) {
+  draw(ctx, pulse = 0) {
     ctx.fillStyle = '#fff';
-    ctx.globalAlpha = 0.8;
+    ctx.globalAlpha = 0.6 + 0.4 * pulse;
     ctx.beginPath();
-    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.arc(this.x, this.y, this.size * (1 + 0.4 * pulse), 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
   }

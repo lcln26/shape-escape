@@ -61,7 +61,8 @@ canvas {
     /* A ring instead of a border, so it doesn't shrink the drawing area. */
     border-radius: var(--border-radius);
     box-shadow: 0 0 0 2px var(--accent-color), 0 4px 8px rgba(0, 0, 0, 0.4);
-    background: linear-gradient(#111, #222);
+    /* Tinted by --hue, which the game shifts at each music drop. */
+    background: linear-gradient(hsl(var(--hue, 220) 30% 6%), hsl(var(--hue, 220) 30% 14%));
 }
 
 #controls {

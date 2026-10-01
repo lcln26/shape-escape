@@ -26,6 +26,24 @@ export function interpolate(curve, x) {
 
 // Draws a shape based on type.
 export function drawShape(ctx, shape, size) {
+  traceShape(ctx, shape, size);
+  ctx.fill();
+  ctx.stroke();
+}
+
+// Neon glow: a wide, faint stroke of the outline drawn underneath the shape.
+// Much cheaper than shadowBlur.
+export function drawGlow(ctx, shape, size, color, width) {
+  traceShape(ctx, shape, size);
+  ctx.lineWidth = width;
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = 0.22;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+// Builds the path for a shape centred on the origin.
+function traceShape(ctx, shape, size) {
   size = getScaledSize(size, shape);
   const half = size / 2;
   ctx.beginPath();
@@ -55,8 +73,6 @@ export function drawShape(ctx, shape, size) {
     }
     ctx.closePath();
   }
-  ctx.fill();
-  ctx.stroke();
 }
 
 export function drawShield(ctx, shape, size, offset) {
